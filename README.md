@@ -198,6 +198,39 @@ eqnav reads `\newcommand`, `\renewcommand` and `\DeclareMathOperator` out of the
 and passes them to MathJax, so a document's own macros resolve. MathJax is not TeX,
 though — equations depending on real LaTeX packages may not render identically.
 
+### Testing locally
+
+`make test` runs the automated suite. To *look* at the plugin, there is a
+sandboxed harness that never reads your own config:
+
+```
+make demo        # markdown fixture, treesitter scanner
+make demo-tex    # LaTeX fixture, regex scanner + preamble macros
+make demo-cold   # as demo, but with a throwaway render cache
+```
+
+Each opens `tests/fixtures/all-symbols.*` — every symbol family and every
+MathJax package the daemon loads, one display equation per row — in a Neovim
+that has only this plugin, plenary and snacks on its runtimepath. Press
+`:Eqnav` and walk the index with `j`/`k`; each entry's header names the section
+it came from, so a broken row is identified by the heading above it.
+
+**Prefer `make demo-cold`.** Renders are cached by content hash, so a warm
+cache serves every equation from disk and never starts Node — a warm run is not
+evidence that the render path works. `demo-cold` points `XDG_CACHE_HOME` at a
+throwaway directory, which is also how to reproduce CI locally:
+
+```
+XDG_CACHE_HOME=$(mktemp -d) EQNAV_REQUIRE_SNACKS=1 make test
+```
+
+Two variants are worth a look as well:
+
+```
+EQNAV_DEMO_INLINE=1 make demo   # index inline $x$ too
+EQNAV_DEMO_POS=float make demo  # float window instead of a right split
+```
+
 ## Credits
 
 The MathJax daemon's architecture — a long-lived process speaking newline-delimited JSON,

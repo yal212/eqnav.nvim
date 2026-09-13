@@ -1,0 +1,244 @@
+% eqnav.nvim -- all symbols, LaTeX edition.
+%
+% This file's job is the code paths all-symbols.md structurally cannot reach:
+%
+%   1. The regex scanner (lua/eqnav/scan/regex.lua). With no `latex` treesitter
+%      parser installed, .tex buffers fall back to delimiter matching. Install
+%      the parser with :TSInstall latex to compare the two scanners.
+%   2. \[..\] and \(..\) which are not markdown math and are skipped there.
+%   3. Bare \begin{align} etc, which in markdown must be wrapped in $$..$$.
+%   4. Preamble macro extraction -- render.preamble() in lua/eqnav/render/init.lua
+%      returns nil for any filetype that is not tex/latex/plaintex, so this is
+%      the only fixture that exercises it.
+%   5. \section{} headings, the other branch of util.context().
+%
+% The equation count here will NOT match all-symbols.md, and should not: the
+% two files cover different delimiter sets on purpose.
+%
+% KNOWN FINDINGS (2026-09-13), both surfaced by this fixture. Remove these
+% notes once fixed; until then they are expected, not new breakage:
+%
+%   * [#9] Nested environments are indexed twice. The three sections below that
+%     nest split/cases/dcases inside equation each produce TWO entries, an
+%     outer and an inner. lua/eqnav/scan/regex.lua fills its `consumed` table
+%     in the environment loop but never checks it there, only in the
+%     delimiter loop below it.
+%   * [#8] \mathbb, \mathfrak, \mathcal, \mathsf, \mathtt, Hebrew letters
+%     and several arrows fail to render. The daemon calls the synchronous
+%     MathJax.tex2svg, and those glyphs live in font ranges MathJax loads on
+%     demand, which requires the promise API.
+%   * [#10] Every environment below renders as an error box: the daemon wraps
+%     each equation in \color{...}{...} to colour it, and an environment
+%     cannot sit inside a TeX group. This affects every section here.
+
+\documentclass{article}
+
+% Junk MathJax cannot execute. The daemon feeds the preamble one line at a time
+% and swallows per-line failures (applyPreamble in scripts/mathjax-daemon.mjs),
+% so these must not take the macro definitions below down with them.
+\RequirePackage{amsmath}
+\usepackage{amssymb,mathtools,physics}
+\makeatletter
+\def\@internalthing{nonsense}
+\makeatother
+
+% These three are what render.preamble() looks for. Every equation in section
+% "Preamble macros" below depends on them; if that section renders as red
+% undefined-macro text, preamble extraction is broken.
+\newcommand{\Reals}{\mathbb{R}}
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+\renewcommand{\vec}[1]{\overrightarrow{#1}}
+\DeclareMathOperator{\sgn}{sgn}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\begin{document}
+
+\section{Delimiters}
+
+All four pairs are indexed by the regex scanner, unlike in markdown.
+
+\[
+  \text{(a) bracket form} \quad E = mc^2
+\]
+
+$$
+\text{(b) dollar-dollar} \quad \nabla \times \vect{B} = \mu_0 \vect{J}
+$$
+
+Inline paren \( \text{(c) paren form} \quad a^2 + b^2 = c^2 \) mid-sentence.
+
+Inline dollars $\text{(d) inline} \quad e^{i\pi} + 1 = 0$ mid-sentence.
+
+\section{Preamble macros}
+
+Every equation here uses a macro defined above \verb|\begin{document}|.
+
+\begin{equation}
+  f : \Reals^n \to \Reals, \qquad \vect{x} \mapsto \inner{\vect{x}}{\vect{x}}
+\end{equation}
+
+\begin{equation}
+  \sgn(x) = \frac{x}{\abs{x}}, \qquad \argmin_{\theta} \; L(\theta)
+\end{equation}
+
+\begin{equation}
+  \vec{AB} \cdot \vec{CD} = \norm{\vec{AB}} \, \norm{\vec{CD}} \cos\theta
+\end{equation}
+
+\section{Environments}
+
+\begin{equation}
+  x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+\end{equation}
+
+\begin{equation*}
+  \oint_{\partial \Sigma} \vect{B} \cdot d\boldsymbol{\ell} = \mu_0 I
+\end{equation*}
+
+\begin{align}
+  a &= b + c \\
+  d &= e + f
+\end{align}
+
+\begin{align*}
+  \sin^2\theta + \cos^2\theta &= 1 \\
+  \tan\theta &= \frac{\sin\theta}{\cos\theta}
+\end{align*}
+
+\begin{alignat}{2}
+  x &= 1 &\quad y &= 2 \\
+  z &= 3 &\quad w &= 4
+\end{alignat}
+
+\begin{gather}
+  p = q \\
+  r = s + t
+\end{gather}
+
+\begin{multline}
+  a + b + c + d \\
+  + e + f + g
+\end{multline}
+
+\begin{flalign}
+  u &= v & w &= x
+\end{flalign}
+
+\begin{eqnarray}
+  \alpha & = & \beta + \gamma \\
+  \delta & = & \epsilon
+\end{eqnarray}
+
+\begin{displaymath}
+  \sum_{k=1}^{n} k = \frac{n(n+1)}{2}
+\end{displaymath}
+
+\begin{equation}
+  \begin{split}
+    h &= i + j \\
+      &= k
+  \end{split}
+\end{equation}
+
+\begin{equation}
+  f(x) = \begin{cases}
+    x^2  & x \geq 0 \\
+    -x^2 & x < 0
+  \end{cases}
+\end{equation}
+
+\begin{equation}
+  g(x) = \begin{dcases}
+    \int_0^x t \, dt & x > 0 \\
+    0                & \text{otherwise}
+  \end{dcases}
+\end{equation}
+
+\section{Labels}
+
+\begin{equation}
+  E = mc^2 \label{eq:mass-energy}
+\end{equation}
+
+\section{Greek}
+
+\[ \alpha \; \beta \; \gamma \; \delta \; \epsilon \; \zeta \; \eta \; \theta \; \iota \; \kappa \; \lambda \; \mu \]
+
+\[ \nu \; \xi \; o \; \pi \; \rho \; \sigma \; \tau \; \upsilon \; \phi \; \chi \; \psi \; \omega \]
+
+\[ \Gamma \; \Delta \; \Theta \; \Lambda \; \Xi \; \Pi \; \Sigma \; \Upsilon \; \Phi \; \Psi \; \Omega \]
+
+\[ \varepsilon \; \vartheta \; \varpi \; \varrho \; \varsigma \; \varphi \; \digamma \]
+
+\section{Operators and relations}
+
+\[ \pm \; \mp \; \times \; \ast \; \star \; \circ \; \bullet \; \cdot \; \oplus \; \otimes \; \odot \; \uplus \; \sqcap \; \sqcup \]
+
+\[ \leq \; \geq \; \equiv \; \sim \; \simeq \; \approx \; \cong \; \neq \; \prec \; \succ \; \ll \; \gg \; \subset \; \supseteq \; \in \]
+
+\[ \nless \; \ngeq \; \nsim \; \ncong \; \nsubseteq \; \notin \; \nmid \; \nparallel \; \nvdash \]
+
+\section{Arrows}
+
+\[ \leftarrow \; \rightarrow \; \leftrightarrow \; \Leftarrow \; \Rightarrow \; \Leftrightarrow \; \mapsto \; \longmapsto \]
+
+\[ \hookleftarrow \; \hookrightarrow \; \rightleftharpoons \; \uparrow \; \downarrow \; \nearrow \; \searrow \; \leadsto \]
+
+\[ A \xrightarrow{\;f\;} B \xleftarrow{\;g\;} C \]
+
+\section{Big operators}
+
+\[ \sum_{k=1}^{n} k \qquad \prod_{i=1}^{m} a_i \qquad \int_a^b f(x)\,dx \qquad \oint_C \vect{F} \cdot d\vect{r} \qquad \iint_D \qquad \iiint_V \]
+
+\[ \bigcup_{n} A_n \qquad \bigcap_{n} B_n \qquad \bigoplus_{i} V_i \qquad \bigotimes_{i} W_i \qquad \lim_{x \to 0} \qquad \limsup_{n} \]
+
+\section{Fonts}
+
+\[ \mathbb{ABCNQRZ} \qquad \mathcal{ABCLMX} \qquad \mathfrak{ABCgpq} \]
+
+\[ \mathsf{ABCxyz} \qquad \mathtt{ABCxyz} \qquad \mathrm{ABCxyz} \qquad \mathbf{ABCxyz} \qquad \boldsymbol{\alpha\beta\gamma} \]
+
+\section{Structures}
+
+\[ \frac{a}{b} \quad \dfrac{a}{b} \quad \tfrac{a}{b} \quad \binom{n}{k} \quad \sqrt{x} \quad \sqrt[3]{y} \quad \cfrac{1}{1 + \cfrac{1}{1 + x}} \]
+
+\[
+  \vect{M} = \begin{pmatrix} a & b \\ c & d \end{pmatrix}
+  \quad
+  \begin{bmatrix} e & f \\ g & h \end{bmatrix}
+  \quad
+  \begin{vmatrix} i & j \\ k & l \end{vmatrix}
+\]
+
+\[ \hat{a} \; \tilde{a} \; \bar{a} \; \dot{a} \; \ddot{a} \; \widehat{abc} \; \overline{abc} \; \overbrace{a+b}^{u} \; \underbrace{c+d}_{v} \]
+
+\section{Package spot-checks}
+
+\[ \dv{f}{x} \quad \pdv{f}{x} \quad \bra{\psi} \quad \ket{\phi} \quad \braket{\psi}{\phi} \quad \comm{A}{B} \]
+
+\[ \cancel{x} \quad \bcancel{y} \quad \cancelto{0}{z} \quad a \coloneqq b \quad \enclose{circle}{c} \quad \bbox[5px, border: 1px solid]{d} \]
+
+\[ \begin{CD} A @>f>> B \\ @VgVV @VVhV \\ C @>k>> D \end{CD} \]
+
+\section{The XML escaping landmine}
+
+\[ a < b \]
+
+\[ \text{if } x < y \text{ then } z > w \]
+
+\[ A \xrightarrow{a<b} B \]
+
+\section{Must NOT be indexed}
+
+% $$ this commented equation must never appear in the index $$
+% \begin{align} neither & = this \end{align}
+
+A bare price of \$5 and another of \$7 in prose.
+
+\begin{verbatim}
+Not math, though the regex scanner cannot see verbatim the way treesitter
+sees a fenced block -- this is the known limitation the README calls out.
+\end{verbatim}
+
+\end{document}

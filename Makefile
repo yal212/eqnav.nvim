@@ -1,4 +1,4 @@
-.PHONY: test test-lua test-daemon lint fmt clean
+.PHONY: test test-lua test-daemon lint fmt clean demo demo-tex demo-cold
 
 NVIM ?= nvim
 
@@ -14,6 +14,25 @@ test-lua:
 
 test-daemon:
 	node tests/daemon_xml_spec.mjs
+
+# Interactive harness. Opens a sandboxed nvim -- your ~/.config/nvim is not
+# read -- on a fixture covering every symbol family and MathJax package.
+demo: .tests/snacks.nvim
+	$(NVIM) -u tests/manual_init.lua tests/fixtures/all-symbols.md
+
+demo-tex: .tests/snacks.nvim
+	$(NVIM) -u tests/manual_init.lua tests/fixtures/all-symbols.tex
+
+# A warm render cache serves every equation from disk and never starts the node
+# daemon, so a warm demo proves nothing about the render path. This is the run
+# that actually exercises it.
+demo-cold: .tests/snacks.nvim
+	XDG_CACHE_HOME=$$(mktemp -d) $(NVIM) -u tests/manual_init.lua tests/fixtures/all-symbols.md
+
+# .tests/ is gitignored; same dependency CI checks out in .github/workflows.
+# Without it display.get() returns the text backend and nothing renders.
+.tests/snacks.nvim:
+	git clone --filter=blob:none --depth 1 https://github.com/folke/snacks.nvim $@
 
 lint:
 	stylua --check lua plugin tests
