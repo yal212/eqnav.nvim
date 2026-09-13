@@ -22,6 +22,9 @@ More prose.
 $$e^{i\pi} + 1 = 0$$
 ]]
 
+-- Saved once, restored after every test: the image-cleanup tests patch it.
+local text_clear = require("eqnav.display.text").clear
+
 local function open(text)
   local bufnr = helpers.buf(text or DOC, "markdown")
   vim.api.nvim_set_current_buf(bufnr)
@@ -35,6 +38,7 @@ describe("view", function()
   end)
   after_each(function()
     eqnav.close()
+    require("eqnav.display.text").clear = text_clear
   end)
 
   it("uses the text backend when no image backend is available", function()
@@ -168,6 +172,48 @@ describe("view", function()
     assert.are.equal(0, #state.equations)
     local text = table.concat(vim.api.nvim_buf_get_lines(state.buf, 0, -1, false), "\n")
     assert.is_truthy(text:find("no equations found", 1, true))
+  end)
+
+  -- Rendered images are terminal state, not buffer state: they stay on screen
+  -- until eqnav sends the graphics-delete escape. The mapped `q` goes through
+  -- close(), which clears -- these cover the paths that do not, and which used to
+  -- leave equations painted over the shell prompt after quitting. Headless has no
+  -- terminal graphics, so this asserts the wiring, not the pixels.
+  local function watch_clears()
+    local backend = require("eqnav.display.text")
+    local seen = {}
+    backend.clear = function(b)
+      table.insert(seen, b)
+    end
+    return seen
+  end
+
+  it("clears images when the index window is closed without the q mapping", function()
+    open()
+    local state = view.current()
+    local ibuf, iwin = state.buf, state.win
+    local cleared = watch_clears() -- after open(), so render()'s own clears do not count
+
+    vim.api.nvim_win_close(iwin, true)
+
+    assert.is_truthy(
+      vim.tbl_contains(cleared, ibuf),
+      "closing the window left the placements on screen: " .. vim.inspect(cleared)
+    )
+  end)
+
+  it("clears images when Neovim exits with the index still open", function()
+    open()
+    local state = view.current()
+    local ibuf = state.buf
+    local cleared = watch_clears()
+
+    vim.api.nvim_exec_autocmds("VimLeavePre", {})
+
+    assert.is_truthy(
+      vim.tbl_contains(cleared, ibuf),
+      "quitting left the placements on screen: " .. vim.inspect(cleared)
+    )
   end)
 
   it("closes cleanly and leaves no window or buffer behind", function()
