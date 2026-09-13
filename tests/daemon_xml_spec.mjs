@@ -45,6 +45,17 @@ const COLOR_CASES = [
 ];
 const COLOR = "e0def4";
 
+// LaTeX defines all of these in latex.ltx guarded by \ifmmode, so pdflatex
+// renders them in math mode. MathJax ships a definition only for \S, so before
+// the daemon declared them every one came back as its own name in red -- the
+// `noundefined` package's output, which is neither an merror nor a failed
+// render, so nothing upstream could notice. tests/fixtures/all-symbols.md's
+// symbol row is where it showed up.
+const MACRO_CASES = [
+  "\\dag", "\\ddag", "\\P", "\\S", "\\pounds", "\\copyright",
+  "\\mathsection", "\\mathparagraph", "\\mathsterling", "\\mathdollar",
+];
+
 const hasRsvg = spawnSync("rsvg-convert", ["--version"], { stdio: "ignore" }).status === 0;
 
 // Return an offending attribute value if any attribute holds a raw < or >, or an
@@ -58,6 +69,14 @@ function badAttribute(svg) {
     if (/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/.test(val)) return val;
   }
   return null;
+}
+
+// What `noundefined` produces for a macro MathJax does not know: the macro's own
+// name as red mtext. Distinct from an merror box, and invisible to any check
+// that only looks for one.
+function undefinedMacro(svg) {
+  const m = /data-mml-node="mtext" fill="red"[^>]*data-latex="([^"]*)"/.exec(svg);
+  return m ? m[1] : null;
 }
 
 // MathJax bakes a failure into the image as a <merror> box, so a render that
@@ -131,6 +150,17 @@ async function run() {
         }
         check(`rsvg-convert accepts coloured ${JSON.stringify(eq)}`, rasterOk, err2);
       }
+    }
+
+    for (const eq of MACRO_CASES) {
+      const tex = path.join(dir, `macro${i}.tex`);
+      const out = path.join(dir, `macro${i}.svg`);
+      i++;
+      await writeFile(tex, eq, "utf8");
+      await execFileP("node", [daemon, "--in", tex, "--out", out, "--display"]);
+      const svg = await readFile(out, "utf8");
+      const undef = undefinedMacro(svg);
+      check(`defines ${JSON.stringify(eq)}`, undef === null, undef && `rendered as red text: ${undef}`);
     }
 
     if (!hasRsvg) console.log("  note: rsvg-convert not on PATH, rasterization checks skipped");
