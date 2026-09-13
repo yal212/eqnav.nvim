@@ -46,6 +46,24 @@ const EXTENSION_PACKAGES = [
 ];
 const PACKAGES = [...BUILTIN_PACKAGES, ...EXTENSION_PACKAGES];
 
+// LaTeX defines each of these in latex.ltx guarded by \ifmmode, so all of them
+// are legal in math mode and pdflatex renders them. MathJax ships no definition
+// for any but \S, so `noundefined` drew the macro's own name in red instead --
+// and `textmacros` does not cover them either, not even inside \text{}. Mapping
+// them to the glyph LaTeX would have produced is the whole fix; the code points
+// are the ones latex.ltx names (\mathparagraph, \mathsterling, ...).
+const MACROS = {
+  dag: "\\dagger",
+  ddag: "\\ddagger",
+  P: "\\unicode{x00B6}",           // PILCROW SIGN
+  mathparagraph: "\\unicode{x00B6}",
+  mathsection: "\\unicode{x00A7}", // SECTION SIGN; \S already works
+  pounds: "\\unicode{x00A3}",      // POUND SIGN
+  mathsterling: "\\unicode{x00A3}",
+  copyright: "\\unicode{x00A9}",   // COPYRIGHT SIGN
+  mathdollar: "\\unicode{x0024}",
+};
+
 function parseArgs(a) {
   const o = { display: false, color: null, ex: 8, daemon: false, listPaths: false };
   for (let i = 2; i < a.length; i++) {
@@ -104,7 +122,7 @@ async function boot() {
         ...EXTENSION_PACKAGES.map((p) => `[tex]/${p}`),
       ],
     },
-    tex: { packages: PACKAGES },
+    tex: { packages: PACKAGES, macros: MACROS },
     // 'local' inlines the glyph <defs> into each SVG, which is what we need for
     // standalone files -- both rsvg-convert and the HTML export get a self
     // contained document with no shared cache to resolve.
