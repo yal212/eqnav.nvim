@@ -24,24 +24,29 @@ Two things to know before you start:
 Surfaced by this fixture. Expected until the issues close — delete the
 corresponding bullet as each is fixed.
 
-- **[#10] Every math environment renders as an error box.** `equation`,
-  `align`, `gather`, `multline`, `eqnarray`, `empheq`, `numcases` — sections 2,
-  15, 20 and 21 — all fail with *"Erroneous nesting of equation structures"*.
-  The daemon colours equations by wrapping them in `\color{...}{...}`, and an
-  environment cannot sit inside a TeX group.
-- **[#8] Dynamically loaded glyphs and packages never render.** `\mathbb`,
-  `\mathfrak`, `\mathcal`, `\mathsf`, `\mathtt`, `\aleph`/`\beth`/`\gimel`,
-  `\leadsto`, `\checkmark`, `\circledS` and `\require{mhchem}` — sections 4,
-  6, 7, 11, 14, 16, 26 and 28. The daemon calls the synchronous
-  `MathJax.tex2svg`; those live in font ranges MathJax fetches on demand, which
-  needs `tex2svgPromise`. *Which* rows fail drifts between runs, because a
-  loaded range stays loaded for the life of the daemon.
-- **[#11] Pandoc `{#eq:…}` labels are not stripped** before rendering, so the
-  second entry in section 3 errors on the `#`. The label itself is read
-  correctly and shows in the header.
 - **[#9] Nested environments are indexed twice.** Visible in `all-symbols.tex`
   rather than here — a `cases` inside an `equation` yields both an outer and an
   inner entry.
+- **`\require{mhchem}` does not render** — the first row of section 28, and any
+  `\ce{…}` anywhere. MathJax 4 keeps mhchem's glyphs in a separate package,
+  `@mathjax/mathjax-mhchem-font-extension`, which this project does not depend
+  on, so the loader rejects `[tex]/mhchem` with *Can't load
+  "@mathjax/mathjax-mhchem-font-extension/svg.js"* and the entry shows
+  *"Extension mhchem failed to load"*. Adding that dependency (~94 KB) is the
+  fix. This is **not** the old #8: the promise API cannot load a package that
+  is not installed.
+- **`empheq`'s `box=` option does not render** — section 20 shows *"Invalid
+  option: box"*. MathJax's `empheq` implementation takes `left=`/`right=` but
+  not `box=`, so the fixture row exercises an option upstream does not support.
+  Plain `\begin{empheq}{align}` and `left=` both render correctly.
+
+Fixed and deleted from this list: **#10** (every environment error-boxing on
+*"Erroneous nesting of equation structures"*, because the daemon coloured by
+wrapping the source in `\color{...}{...}`), **#8** (`\mathbb`, `\mathfrak`,
+`\mathcal`, `\mathsf`, `\mathtt`, `\leadsto`, `\checkmark` and the `\require`
+/ autoload paths, which need `tex2svgPromise` because MathJax fetches those
+font ranges and packages on demand) and **#11** (pandoc `{#eq:…}` labels
+reaching MathJax and erroring on the `#`).
 
 Rendering as a red error box **inside an image** is correct behaviour for
 section 29 (`noundefined`, malformed `\frac{a}`) and is not a bug — that is the
