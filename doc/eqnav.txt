@@ -1,0 +1,286 @@
+*eqnav.txt*                        A rendered-equation index for Neovim
+
+Author:  yal212
+License: MIT
+Repo:    https://github.com/yal212/eqnav.nvim
+
+==============================================================================
+CONTENTS                                                       *eqnav-contents*
+
+  1. Introduction ................................. |eqnav-introduction|
+  2. Requirements ................................. |eqnav-requirements|
+  3. Setup ........................................ |eqnav-setup|
+  4. Commands ..................................... |eqnav-commands|
+  5. Mappings ..................................... |eqnav-mappings|
+  6. Configuration ................................ |eqnav-configuration|
+  7. Lua API ...................................... |eqnav-api|
+  8. How it works ................................. |eqnav-internals|
+  9. Troubleshooting .............................. |eqnav-troubleshooting|
+
+==============================================================================
+1. INTRODUCTION                                            *eqnav-introduction*
+
+eqnav opens a separate buffer listing every display equation in the current
+document, rendered as an image, with the prose stripped out. You move through
+it equation by equation with `j` and `k`, and `<CR>` takes you to that
+equation's line in the source.
+
+It implements nvim-lua/wishlist issue #51. The problem it solves is
+context-switch cost: finding an equation by jumping around the document means
+alternating between prose and math, and each alternation costs a refocus
+before you can judge whether you have found the right one.
+
+Neovim already has good inline and hover math preview. eqnav does not compete
+with those; it is only the indexed view and the jump back.
+
+==============================================================================
+2. REQUIREMENTS                                            *eqnav-requirements*
+
+Required~
+  - Neovim 0.10 or newer
+  - Node.js 18 or newer (runs MathJax; no TeX distribution is needed)
+
+Optional but recommended~
+  - A rasterizer: `rsvg-convert` from librsvg, or ImageMagick
+  - An image backend: snacks.nvim with `image.enabled`, or image.nvim
+  - A graphics-capable terminal: Kitty, Ghostty, WezTerm, iTerm2
+  - telescope.nvim for |:EqnavPick|
+  - The `latex` treesitter parser for .tex files: `:TSInstall latex`
+
+Without a rasterizer or image backend, eqnav shows LaTeX source in the index
+instead of images, and |:EqnavExport| still produces a fully rendered HTML
+page. Run `:checkhealth eqnav` to see exactly which pieces are present.
+
+MathJax must be installed into the plugin directory. With lazy.nvim use
+`build = "npm install"`; otherwise run `npm install` there yourself.
+
+==============================================================================
+3. SETUP                                                          *eqnav-setup*
+
+eqnav works with no configuration. Commands are available as soon as the
+plugin loads; calling setup() is only needed to change defaults. >lua
+
+    require("eqnav").setup({})
+<
+==============================================================================
+4. COMMANDS                                                    *eqnav-commands*
+
+                                                                      *:Eqnav*
+:Eqnav                  Toggle the equation index for the current buffer.
+
+                                                                  *:EqnavOpen*
+:EqnavOpen              Open the index.
+
+                                                                 *:EqnavClose*
+:EqnavClose             Close the index.
+
+                                                               *:EqnavRefresh*
+:EqnavRefresh[!]        Re-scan the source buffer and rebuild the index. With
+                        [!], bypass the render cache and re-render every
+                        equation from scratch.
+
+                                                                  *:EqnavPick*
+:EqnavPick              Fuzzy-find an equation with telescope and jump to it.
+                        Matches against the math, its \label, and the nearest
+                        heading. Also available as `:Telescope eqnav`.
+
+                                                                *:EqnavExport*
+:EqnavExport [path]     Write the index to a self-contained HTML page and open
+                        it in the system browser. The page inlines the SVGs
+                        already rendered for the terminal view, follows the
+                        reader's light/dark preference, and needs no network.
+                        With no [path], writes into the cache directory.
+
+                                                            *:EqnavClearCache*
+:EqnavClearCache        Remove every cached render.
+
+==============================================================================
+5. MAPPINGS                                                    *eqnav-mappings*
+
+These are buffer-local to the index and do not affect your document. All are
+configurable through `keymaps` (see |eqnav-configuration|).
+
+    j          next equation
+    k          previous equation
+    <CR>       jump to the source, close the index
+    o          jump to the source, keep the index open
+    y          yank the equation's source, delimiters included
+    r          force a re-render of every equation
+    gx         export to HTML
+    q          close
+
+`j` and `k` move between equations rather than between lines. The index holds
+no prose, so a line is the wrong unit of travel.
+
+eqnav sets no global mappings. To bind the toggle: >lua
+
+    vim.keymap.set("n", "<leader>e", "<cmd>Eqnav<cr>", { desc = "Equations" })
+<
+==============================================================================
+6. CONFIGURATION                                          *eqnav-configuration*
+
+Defaults: >lua
+
+    require("eqnav").setup({
+      filetypes = {
+        "markdown", "quarto", "rmd", "tex", "latex", "plaintex", "typst",
+      },
+      include_inline = false,
+      window = {
+        position = "right",   -- right|left|top|bottom|float|tab
+        width = 60,
+        height = 15,
+      },
+      render = {
+        enabled = true,
+        ex = 9,
+        color = nil,
+        concurrency = 8,
+        node = "node",
+        rasterizer = nil,
+      },
+      display = { backend = "auto" },  -- auto|snacks|image_nvim|text
+      sync = {
+        live = true,
+        debounce = 300,
+        follow = false,
+      },
+      keymaps = {
+        next = "j", prev = "k", jump = "<CR>", jump_keep = "o",
+        yank = "y", refresh = "r", export = "gx", close = "q",
+      },
+    })
+<
+                                                       *eqnav-include_inline*
+include_inline ~
+    Index inline `$x$` as well as display `$$..$$`. Off by default: the
+    purpose of the index is to escape noise, and a document's inline math is
+    mostly single symbols that would recreate it.
+
+                                                                 *eqnav-ex*
+render.ex ~
+    Pixels per TeX `ex` unit. This is the equation-size knob. Raise it for
+    larger equations in the index.
+
+                                                              *eqnav-color*
+render.color ~
+    Hex colour for rendered glyphs, without a leading "#". When nil, eqnav
+    follows the foreground of the |hl-Normal| highlight and re-renders when
+    the colorscheme changes. Leaving it nil is strongly recommended: a fixed
+    colour goes unreadable the moment the background changes.
+
+                                                             *eqnav-follow*
+sync.follow ~
+    Also move the source window's cursor to match the index cursor. Off by
+    default, because moving a window the user did not ask you to move is
+    surprising. The matching equation is highlighted in the source either way.
+
+==============================================================================
+7. LUA API                                                          *eqnav-api*
+
+                                                            *eqnav.setup()*
+require("eqnav").setup({opts})
+                        Apply configuration. Optional.
+
+                                                             *eqnav.open()*
+                                                            *eqnav.close()*
+                                                           *eqnav.toggle()*
+require("eqnav").open({opts})
+require("eqnav").close()
+require("eqnav").toggle({opts})
+                        Open, close, or toggle the index. {opts} may carry
+                        `source_buf` and `focus`.
+
+                                                          *eqnav.refresh()*
+require("eqnav").refresh({force})
+                        Re-scan and rebuild. {force} bypasses the cache.
+
+                                                       *eqnav.equations()*
+require("eqnav").equations({bufnr})
+                        Scan a buffer and return its equations without opening
+                        anything. Each entry is an `eqnav.Equation`: >lua
+
+                            {
+                              id,        -- content hash / cache key
+                              tex,       -- math source, delimiters stripped
+                              raw,       -- source including delimiters
+                              display,   -- boolean
+                              lnum, col, end_lnum, end_col,
+                              index,     -- ordinal in the document
+                              label,     -- \label{..}, if any
+                              context,   -- nearest heading
+                              bufnr,
+                              mark,      -- extmark tracking live position
+                            }
+<
+                                                      *eqnav.export_html()*
+require("eqnav").export_html({path})
+                        Export and open the HTML page.
+
+                                                      *eqnav.clear_cache()*
+require("eqnav").clear_cache()
+                        Remove every cached render; returns the count.
+
+==============================================================================
+8. HOW IT WORKS                                                *eqnav-internals*
+
+    scan/     buffer   -> Equation[]     treesitter first, regex fallback
+    render/   Equation -> png + svg      MathJax daemon, hash-cached
+    display/  png      -> pixels         snacks -> image.nvim -> text
+    view.lua  the index buffer, navigation, jump-back
+
+Scanning prefers treesitter~
+    Queries live in `queries/<lang>/eqnav.scm` and load through the normal
+    runtimepath mechanism, so you can override or extend them. Treesitter is
+    what keeps `$x$` inside a fenced code block out of the index: the fence is
+    injected as its own language, so it is never part of the math tree. Where
+    no parser is installed, eqnav falls back to delimiter matching, which
+    cannot see fences as reliably. `:checkhealth eqnav` says which is in use.
+
+Positions are extmarks~
+    Each equation is anchored to an extmark in the source buffer, so jump
+    targets stay correct after you edit above them, and live refresh only has
+    to re-render what actually changed.
+
+Renders are cached by content hash~
+    The key covers the math, display mode, colour and size — everything that
+    changes the pixels. Reopening the index on an unchanged document is
+    instant and never starts Node. Because the colour is in the key, changing
+    colorscheme produces new images rather than reusing stale ones.
+
+The index appears before the images do~
+    Scanning is synchronous and fast, so headers are drawn immediately and
+    images fill in as they arrive.
+
+==============================================================================
+9. TROUBLESHOOTING                                      *eqnav-troubleshooting*
+
+Start with `:checkhealth eqnav`. It reports Node, the MathJax install, the
+rasterizer, the display backend, terminal graphics support, tmux passthrough,
+treesitter parsers, and the cache.
+
+Equations show as LaTeX source instead of images~
+    No image backend was detected, or the terminal reports no graphics
+    support. Install snacks.nvim with `image.enabled = true`. |:EqnavExport|
+    works regardless.
+
+Nothing appears inside tmux~
+    tmux needs passthrough: >tmux
+        set -g allow-passthrough on
+<    Restart the tmux server afterwards.
+
+Equations are black and invisible~
+    Something pinned `render.color`. Set it back to nil so eqnav follows
+    |hl-Normal|, then `:EqnavClearCache` and `:EqnavRefresh!`.
+
+An equation renders as a red error box~
+    MathJax reports errors visually rather than failing, so you can see which
+    equation is wrong instead of finding an empty slot. Check the source. Note
+    that MathJax is not TeX: equations depending on real LaTeX packages may
+    not render identically.
+
+Math is missed in a .tex file~
+    Install the parser: `:TSInstall latex`. Without it eqnav uses the regex
+    scanner.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
