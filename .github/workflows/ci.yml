@@ -41,8 +41,17 @@ jobs:
           repository: nvim-lua/plenary.nvim
           path: .tests/plenary.nvim
 
+      - name: Checkout snacks.nvim
+        uses: actions/checkout@v4
+        with:
+          repository: folke/snacks.nvim
+          path: .tests/snacks.nvim
+
+      # snacks is checked out above, so a skip here means something broke.
       - name: Run tests
         run: make test
+        env:
+          EQNAV_REQUIRE_SNACKS: "1"
 
   lint:
     runs-on: ubuntu-latest
