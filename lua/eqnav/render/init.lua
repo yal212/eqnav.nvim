@@ -42,8 +42,11 @@ end
 ---
 --- Cache hits are reported immediately and never reach the daemon, so an
 --- unchanged document repaints without starting node at all.
+--- The callback's `id` is the equation's content hash as it was when the render
+--- started, so a caller can tell a result that is still wanted from one whose
+--- equation has since been edited away. See view.set_image.
 ---@param equations eqnav.Equation[]
----@param cb fun(index: integer, png: string|nil, err: string|nil)
+---@param cb fun(index: integer, png: string|nil, err: string|nil, id: string)
 ---@param opts? { force?: boolean }
 function M.render_all(equations, cb, opts)
   opts = opts or {}
@@ -67,7 +70,7 @@ function M.render_all(equations, cb, opts)
     local hit = not opts.force and cache.get(eq.id)
     if hit then
       vim.schedule(function()
-        cb(eq.index, hit, nil)
+        cb(eq.index, hit, nil, eq.id)
       end)
     else
       table.insert(todo, eq)
@@ -98,7 +101,7 @@ function M.render_all(equations, cb, opts)
         if not res.ok then
           active = active - 1
           vim.schedule(function()
-            cb(eq.index, nil, vim.trim(tostring(res.err or "render failed")):sub(1, 120))
+            cb(eq.index, nil, vim.trim(tostring(res.err or "render failed")):sub(1, 120), eq.id)
             pump()
           end)
           return
@@ -110,7 +113,7 @@ function M.render_all(equations, cb, opts)
         if not fh then
           active = active - 1
           vim.schedule(function()
-            cb(eq.index, nil, "cannot write cache: " .. tostring(ferr))
+            cb(eq.index, nil, "cannot write cache: " .. tostring(ferr), eq.id)
             pump()
           end)
           return
@@ -121,7 +124,7 @@ function M.render_all(equations, cb, opts)
         raster.convert(svg_path, png_path, function(png, err)
           active = active - 1
           vim.schedule(function()
-            cb(eq.index, png, err)
+            cb(eq.index, png, err, eq.id)
             pump()
           end)
         end)

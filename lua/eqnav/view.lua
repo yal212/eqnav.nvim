@@ -194,15 +194,27 @@ function M.render()
 end
 
 --- Record a finished render and repaint just that entry's body.
+---
+--- `id` is the equation the render was started for. An ordinal alone is not an
+--- identity: a render in flight while the document changes comes back pointing
+--- at whatever now occupies that slot, and painting it there shows the wrong
+--- image until the next refresh happens to correct it. The content hash does
+--- not survive an edit, so comparing it drops exactly those results. Cancelling
+--- the work would be tidier; dropping the answer is enough and much simpler.
 ---@param index integer
 ---@param png string|nil
 ---@param err string|nil
-function M.set_image(index, png, err)
-  if not current or not current.entries or not current.entries[index] then
+---@param id? string identity of the equation the render was started for
+function M.set_image(index, png, err, id)
+  local entry = current and current.entries and current.entries[index]
+  if not entry then
     return
   end
-  current.entries[index].png = png
-  current.entries[index].err = err
+  if id ~= nil and entry.eq.id ~= id then
+    return
+  end
+  entry.png = png
+  entry.err = err
   M.render()
 end
 
@@ -502,9 +514,9 @@ function M.open(opts)
   })
 
   if config.options.render.enabled and display.get().images then
-    require("eqnav.render").render_all(equations, function(index, png, err)
+    require("eqnav.render").render_all(equations, function(index, png, err, id)
       if current and current.buf == buf then
-        M.set_image(index, png, err)
+        M.set_image(index, png, err, id)
       end
     end)
   end
@@ -555,9 +567,9 @@ function M.refresh(force)
     M.goto_entry(math.min(keep, #current.equations))
   end
   if config.options.render.enabled and display.get().images then
-    require("eqnav.render").render_all(current.equations, function(index, png, err)
+    require("eqnav.render").render_all(current.equations, function(index, png, err, id)
       if current then
-        M.set_image(index, png, err)
+        M.set_image(index, png, err, id)
       end
     end, { force = force })
   end

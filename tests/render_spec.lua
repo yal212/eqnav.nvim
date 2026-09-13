@@ -43,8 +43,8 @@ describe("render pipeline", function()
     assert.are.equal(2, #eqs)
 
     local results = {}
-    render.render_all(eqs, function(index, png, err)
-      results[index] = { png = png, err = err }
+    render.render_all(eqs, function(index, png, err, id)
+      results[index] = { png = png, err = err, id = id }
     end)
 
     assert.is_true(
@@ -59,6 +59,10 @@ describe("render pipeline", function()
       assert.is_truthy(results[i].png, "equation " .. i .. " produced no png")
       local stat = vim.uv.fs_stat(results[i].png)
       assert.is_truthy(stat and stat.size > 0, "png is empty")
+      -- The identity view.set_image checks a result against, so that a render
+      -- finishing after an edit is dropped rather than painted onto whatever
+      -- now holds that ordinal.
+      assert.are.equal(eqs[i].id, results[i].id, "callback should report the equation's id")
     end
   end)
 
