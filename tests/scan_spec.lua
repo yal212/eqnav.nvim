@@ -186,6 +186,46 @@ $inline$
     assert.is_true(eqs[1].tex:find("\\begin{align}", 1, true) ~= nil)
   end)
 
+  -- A `cases`/`split`/`dcases` is almost always written inside an `equation` or
+  -- `align`, so before this was fixed most piecewise functions in a real .tex
+  -- document produced a duplicate entry: one for the enclosing environment and
+  -- one for the nested one, rendering as two near-identical images.
+  it("indexes a nested environment once, as part of its enclosing one", function()
+    local nested = {
+      cases = "\\begin{equation}\n  f(x) = \\begin{cases}\n    x^2 & x \\geq 0 \\\\\n    -x^2 & x < 0\n  \\end{cases}\n\\end{equation}",
+      split = "\\begin{equation}\n  \\begin{split}\n    a &= b \\\\\n      &= c\n  \\end{split}\n\\end{equation}",
+      dcases = "\\begin{equation}\n  g(x) = \\begin{dcases}\n    1 & x > 0 \\\\\n    0 & x \\leq 0\n  \\end{dcases}\n\\end{equation}",
+    }
+    for env, text in pairs(nested) do
+      local eqs = regex.scan(helpers.buf(text, "text"))
+      assert.are.equal(1, #eqs, env .. " in equation: " .. vim.inspect(helpers.summary(eqs)))
+      assert.is_truthy(
+        eqs[1].tex:find("\\begin{equation}", 1, true),
+        env .. ": the entry should be the whole equation, not the inner environment"
+      )
+    end
+  end)
+
+  -- The other half of the fix: nesting suppression must not swallow an
+  -- environment that stands on its own.
+  it("still indexes a standalone cases, and sibling environments separately", function()
+    local standalone =
+      regex.scan(helpers.buf("\\begin{cases}\na & b \\\\\nc & d\n\\end{cases}", "text"))
+    assert.are.equal(1, #standalone, vim.inspect(helpers.summary(standalone)))
+
+    local siblings = regex.scan(
+      helpers.buf(
+        "\\begin{equation}\na\n\\end{equation}\n\n\\begin{equation}\nb\n\\end{equation}",
+        "text"
+      )
+    )
+    assert.are.equal(2, #siblings, vim.inspect(helpers.summary(siblings)))
+
+    local mixed =
+      regex.scan(helpers.buf("\\begin{align}\na &= b\n\\end{align}\n\n$$c = d$$", "text"))
+    assert.are.equal(2, #mixed, vim.inspect(helpers.summary(mixed)))
+  end)
+
   it("skips fenced code blocks", function()
     local bufnr = helpers.buf("$$yes$$\n```\n$$no$$\n```\n", "text")
     local eqs = regex.scan(bufnr)
