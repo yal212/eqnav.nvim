@@ -103,7 +103,10 @@ Defaults shown; pass only what you want to change.
 
 ```lua
 require("eqnav").setup({
-  filetypes = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex", "typst" },
+  -- Typst is not supported: its math is not TeX, and it separates inline from
+  -- display by the whitespace after `$`, so it needs its own query and its own
+  -- renderer. Add "typst" here if you want to experiment anyway.
+  filetypes = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex" },
 
   -- Index inline $x$ as well as display $$..$$. Off by default: the point of
   -- the index is to escape noise, and inline math is mostly single symbols.
