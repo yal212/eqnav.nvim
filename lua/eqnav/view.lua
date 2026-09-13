@@ -463,16 +463,42 @@ function M.open(opts)
   M.render()
   M.goto_entry(1)
 
+  local group = vim.api.nvim_create_augroup("eqnav.view." .. buf, { clear = true })
+
   vim.api.nvim_create_autocmd({ "CursorMoved" }, {
+    group = group,
     buffer = buf,
     callback = M.highlight_current,
   })
+
+  -- Rendered images live in the terminal, not in the buffer: they stay painted
+  -- until something sends the graphics-delete escape, so every path out of the
+  -- index has to clear them. `q` routes through M.close(), which does -- but
+  -- `:q`, `ZZ`, `:bd` and quitting Neovim do not, and those used to drop the
+  -- view on the floor with its placements still live. The snacks backend happens
+  -- to register its own BufWipeout/ExitPre cleanup (placement.new calls
+  -- Snacks.image.setup), but display/image_nvim.lua has none, and leaning on
+  -- another plugin's autocmds for this is how equations end up painted over the
+  -- shell prompt after you quit.
+  local function clear_images()
+    pcall(function()
+      display.get().clear(buf)
+    end)
+  end
+
   vim.api.nvim_create_autocmd({ "BufWipeout", "WinClosed" }, {
+    group = group,
     buffer = buf,
     once = true,
     callback = function()
+      clear_images()
       current = nil
     end,
+  })
+  -- Not buffer-scoped, so it also covers :qa from the source window.
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = group,
+    callback = clear_images,
   })
 
   if config.options.render.enabled and display.get().images then
@@ -503,6 +529,7 @@ function M.close()
   if buf and vim.api.nvim_buf_is_valid(buf) then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
   end
+  pcall(vim.api.nvim_del_augroup_by_name, "eqnav.view." .. buf)
   current = nil
 end
 
