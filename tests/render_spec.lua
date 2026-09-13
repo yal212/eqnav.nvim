@@ -122,6 +122,11 @@ describe("render pipeline", function()
       -- mid-render through the same mechanism.
       { "\\require{verb}\\verb|x|", "a package loaded by \\require" },
       { "\\href{http://example.com}{y}", "a package loaded by autoload" },
+      -- mhchem needs @mathjax/mathjax-mhchem-font-extension on top of the promise
+      -- API: MathJax 4 keeps its glyphs out of the main font, and without that
+      -- package the loader rejects [tex]/mhchem with "Extension mhchem failed to
+      -- load". package.json depends on it for exactly this case.
+      { "\\require{mhchem}\\ce{CO2 + C -> 2CO}", "mhchem, fonts and all" },
     }
 
     local results = {}
@@ -147,14 +152,6 @@ describe("render pipeline", function()
     end
     render.daemon.reset()
   end)
-
-  -- \require{mhchem} is deliberately absent above. It fails for an unrelated
-  -- reason that the promise API cannot fix: MathJax 4 splits mhchem's glyphs into
-  -- @mathjax/mathjax-mhchem-font-extension, which this project does not depend on,
-  -- so the loader rejects with `Can't load
-  -- "@mathjax/mathjax-mhchem-font-extension/svg.js"` and MathJax renders
-  -- "Extension mhchem failed to load". Adding that dependency is the fix; until
-  -- then \ce{..} does not render and the fixture says so.
 
   -- #10: colouring by wrapping the source in \color{..}{..} is illegal around an
   -- environment, and every eqnav render passes a colour. The node-level spec

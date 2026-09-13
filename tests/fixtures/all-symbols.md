@@ -27,14 +27,6 @@ corresponding bullet as each is fixed.
 - **[#9] Nested environments are indexed twice.** Visible in `all-symbols.tex`
   rather than here — a `cases` inside an `equation` yields both an outer and an
   inner entry.
-- **`\require{mhchem}` does not render** — the first row of section 28, and any
-  `\ce{…}` anywhere. MathJax 4 keeps mhchem's glyphs in a separate package,
-  `@mathjax/mathjax-mhchem-font-extension`, which this project does not depend
-  on, so the loader rejects `[tex]/mhchem` with *Can't load
-  "@mathjax/mathjax-mhchem-font-extension/svg.js"* and the entry shows
-  *"Extension mhchem failed to load"*. Adding that dependency (~94 KB) is the
-  fix. This is **not** the old #8: the promise API cannot load a package that
-  is not installed.
 - **`empheq`'s `box=` option does not render** — section 20 shows *"Invalid
   option: box"*. MathJax's `empheq` implementation takes `left=`/`right=` but
   not `box=`, so the fixture row exercises an option upstream does not support.
@@ -46,7 +38,9 @@ wrapping the source in `\color{...}{...}`), **#8** (`\mathbb`, `\mathfrak`,
 `\mathcal`, `\mathsf`, `\mathtt`, `\leadsto`, `\checkmark` and the `\require`
 / autoload paths, which need `tex2svgPromise` because MathJax fetches those
 font ranges and packages on demand) and **#11** (pandoc `{#eq:…}` labels
-reaching MathJax and erroring on the `#`).
+reaching MathJax and erroring on the `#`). `\require{mhchem}` was a third,
+separate cause — MathJax 4 keeps mhchem's glyphs in
+`@mathjax/mathjax-mhchem-font-extension`, now a declared dependency.
 
 Rendering as a red error box **inside an image** is correct behaviour for
 section 29 (`noundefined`, malformed `\frac{a}`) and is not a bug — that is the
