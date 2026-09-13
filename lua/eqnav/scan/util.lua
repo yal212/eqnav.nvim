@@ -10,6 +10,18 @@ local PAIRS = {
   { "$", "$", false },
 }
 
+--- Drop a pandoc `{#eq:foo}` attribute. It is not TeX: pandoc consumes it before
+--- TeX ever sees it, which is why the syntax exists, and MathJax fails on the
+--- `#` with "You can't use 'macro parameter character #' in math mode". `M.label`
+--- has already read it out of the raw text by the time this runs, and `raw` keeps
+--- it so yanking still reproduces the source exactly. The pattern deliberately
+--- mirrors `M.label`'s so the two cannot drift apart.
+---@param s string
+---@return string
+local function drop_pandoc_label(s)
+  return vim.trim((s:gsub("%s*{#eq:[%w_%-]+}", "")))
+end
+
 --- Strip math delimiters. Returns the inner text and whether the delimiters
 --- themselves indicated display math (nil when they say nothing either way).
 ---@param raw string
@@ -19,10 +31,10 @@ function M.strip(raw)
   for _, p in ipairs(PAIRS) do
     local open, close, display = p[1], p[2], p[3]
     if #s > #open + #close and s:sub(1, #open) == open and s:sub(-#close) == close then
-      return vim.trim(s:sub(#open + 1, #s - #close)), display
+      return drop_pandoc_label(s:sub(#open + 1, #s - #close)), display
     end
   end
-  return s, nil
+  return drop_pandoc_label(s), nil
 end
 
 --- `\label{foo}` or a pandoc `{#eq:foo}` attribute, if the equation carries one.
