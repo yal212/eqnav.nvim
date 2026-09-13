@@ -264,6 +264,15 @@ describe("view", function()
     eqnav.open({ source_buf = bufnr })
     assert.is_false(view.is_open())
   end)
+
+  -- Shipping `typst` in the defaults promised support that does not exist:
+  -- there is no typst query, the regex fallback's delimiters are LaTeX-shaped,
+  -- and MathJax cannot parse Typst math anyway. `before_each` re-runs setup, so
+  -- this asserts the shipped defaults rather than whatever this session set.
+  it("does not claim typst, which has neither a scanner nor a renderer", function()
+    local bufnr = helpers.buf("$ x = 1 $", "typst")
+    assert.is_false(require("eqnav.config").enabled_for(bufnr))
+  end)
 end)
 
 describe("sync", function()

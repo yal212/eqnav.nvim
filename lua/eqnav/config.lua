@@ -3,7 +3,11 @@ local M = {}
 ---@class eqnav.Config
 local defaults = {
   -- Filetypes eqnav will scan. Anything not listed is ignored outright.
-  filetypes = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex", "typst" },
+  -- `typst` is deliberately absent: there is no queries/typst/eqnav.scm, the
+  -- regex fallback's delimiters are LaTeX-shaped, and Typst math is not TeX, so
+  -- MathJax cannot read it even where the `$` happens to line up. Listing it
+  -- promised support that does not exist. Add it yourself to experiment.
+  filetypes = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex" },
 
   -- Index inline math ($x$) as well as display math ($$..$$).
   -- Off by default on purpose: wishlist#51 is about escaping noise, and a
