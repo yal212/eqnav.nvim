@@ -166,6 +166,37 @@ describe("view", function()
     assert.are.equal("$$c \\equiv m^e \\pmod{n}$$", vim.fn.getreg('"'))
   end)
 
+  -- Renders are async and identified by ordinal. When an edit lands while one is
+  -- in flight, the ordinal still exists but no longer means the same equation --
+  -- so the finished image would be painted onto its replacement and stay wrong
+  -- until the next refresh happened to correct it. With sync.live on and a 300ms
+  -- debounce this is reachable by ordinary typing.
+  it("drops a render that finished for an equation no longer at that ordinal", function()
+    local source = open("# T\n\n$$alpha$$\n\n$$beta$$\n")
+    local stale_id = view.current().equations[2].id
+    assert.are.equal("beta", view.current().equations[2].tex)
+
+    vim.api.nvim_buf_set_lines(source, 4, 5, false, { "$$gamma$$" })
+    view.refresh()
+
+    local fresh = view.current().equations[2]
+    assert.are.equal("gamma", fresh.tex)
+    assert.are_not.equal(stale_id, fresh.id, "the hash must change with the content")
+
+    view.set_image(2, "/nonexistent/beta.png", nil, stale_id)
+    assert.is_nil(
+      view.current().entries[2].png,
+      "the in-flight render for the old equation 2 was painted onto the new one"
+    )
+
+    view.set_image(2, "/nonexistent/gamma.png", nil, fresh.id)
+    assert.are.equal(
+      "/nonexistent/gamma.png",
+      view.current().entries[2].png,
+      "a result that still matches must land"
+    )
+  end)
+
   it("reports an empty document without erroring", function()
     open("# Nothing here\n\nJust prose.\n")
     local state = view.current()
