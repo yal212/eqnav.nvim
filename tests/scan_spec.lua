@@ -31,6 +31,17 @@ describe("scan.util", function()
     assert.is_nil(util.label("E=mc^2"))
   end)
 
+  -- pandoc consumes a {#eq:..} attribute before TeX ever sees it, which is why
+  -- the syntax exists. Left in the rendered text, MathJax fails with "You can't
+  -- use 'macro parameter character #' in math mode".
+  it("strips a pandoc {#eq:..} attribute, which MathJax cannot parse", function()
+    local tex, display = util.strip("$$\\hbar \\omega = h \\nu {#eq:planck}$$")
+    assert.are.equal("\\hbar \\omega = h \\nu", tex)
+    assert.is_true(display)
+    -- \label{..} stays: MathJax's ams package understands it.
+    assert.are.equal("E = mc^2 \\label{eq:mass}", util.strip("$$E = mc^2 \\label{eq:mass}$$"))
+  end)
+
   it("hashes on everything that changes the pixels", function()
     local base = util.hash("x", true, "ffffff", 9)
     assert.are.equal(base, util.hash("x", true, "ffffff", 9))
@@ -96,6 +107,16 @@ $$also_real$$
       return e.tex
     end, eqs)
     assert.are.same({ "real", "also_real" }, texts)
+  end)
+
+  it("labels a pandoc-tagged equation without sending the '#' to the renderer", function()
+    local bufnr = helpers.buf("$$\n\\hbar \\omega = h \\nu {#eq:planck}\n$$\n", "markdown")
+    local eqs = scan.scan(bufnr)
+    assert.are.equal(1, #eqs)
+    assert.are.equal("eq:planck", eqs[1].label)
+    assert.is_nil(eqs[1].tex:find("#", 1, true), "tex still carries the attribute: " .. eqs[1].tex)
+    -- raw keeps it, so `y` still reproduces the source exactly.
+    assert.is_truthy(eqs[1].raw:find("{#eq:planck}", 1, true), "raw: " .. eqs[1].raw)
   end)
 
   it("records the nearest heading as context", function()
