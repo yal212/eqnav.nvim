@@ -183,4 +183,68 @@ describe("render pipeline", function()
     assert.is_truthy(got.err:find("definitely-not-a-real-binary", 1, true), got.err)
     render.daemon.reset()
   end)
+
+  -- Regression: stop() SIGTERMs the daemon, but vim.system reports a signalled
+  -- child as code 0, and its on_exit is scheduled -- so the stale exit used to
+  -- land after the next start() and null out the live process handle. The
+  -- "ready" line that followed then crashed inside a scheduled callback and
+  -- stranded every queued request. There is deliberately no pause before the
+  -- restart here: an exit still in flight is the whole race.
+  it("serves requests again after the daemon is stopped and restarted", function()
+    if not has_node then
+      pending("node or @mathjax/src unavailable")
+      return
+    end
+    render.daemon.reset()
+
+    local first
+    render.daemon.request({ equation = "x^2", display = true }, function(res)
+      first = res
+    end)
+    assert.is_true(
+      wait(function()
+        return first ~= nil
+      end),
+      "first request never completed"
+    )
+    assert.is_true(first.ok, tostring(first.err))
+
+    render.daemon.stop()
+
+    local second
+    render.daemon.request({ equation = "y^2", display = true }, function(res)
+      second = res
+    end)
+    assert.is_true(
+      wait(function()
+        return second ~= nil
+      end),
+      "restarted daemon never answered"
+    )
+    assert.is_true(second.ok, tostring(second.err))
+    render.daemon.reset()
+  end)
+
+  -- A deliberate stop still owes every caller an answer: render_all's pump only
+  -- advances from a callback, so a silently dropped request stalls it forever.
+  it("reports pending requests as failed when the daemon is stopped", function()
+    if not has_node then
+      pending("node or @mathjax/src unavailable")
+      return
+    end
+    render.daemon.reset()
+
+    -- Nothing pumps the loop between these two calls, so the request is still
+    -- queued behind the daemon's "ready" line when the stop arrives.
+    local got
+    render.daemon.request({ equation = "z^2", display = true }, function(res)
+      got = res
+    end)
+    render.daemon.stop()
+
+    assert.is_truthy(got, "stop() dropped a pending request without answering it")
+    assert.is_false(got.ok)
+    assert.is_truthy(got.err)
+    render.daemon.reset()
+  end)
 end)
