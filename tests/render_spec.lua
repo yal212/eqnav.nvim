@@ -95,6 +95,118 @@ describe("render pipeline", function()
     end
   end)
 
+  -- #8: @mathjax/mathjax-newcm-font ships most of its glyph coverage as ranges
+  -- MathJax fetches on demand (svg/dynamic/: double-struck, fraktur,
+  -- calligraphic, monospace, sans-serif, ...). A glyph from a range that is not
+  -- loaded yet raises MathJax's Retry signal, which only the promise API
+  -- resolves; \require{..} loads a package the same way. Two things make this
+  -- easy to miss: a loaded range stays loaded for the life of the daemon, so
+  -- *which* equations fail drifts between runs, and a warm cache never reaches
+  -- the daemon at all. Hence a fresh daemon, and daemon.request, which does not
+  -- consult the cache.
+  it("renders glyphs from font ranges MathJax loads on demand", function()
+    if not has_node then
+      pending("node or @mathjax/src unavailable")
+      return
+    end
+    render.daemon.reset()
+
+    -- One case per range, so each is the first request to need its own.
+    local cases = {
+      { "\\mathbb{R}", "double-struck" },
+      { "\\mathfrak{g}", "fraktur" },
+      { "\\mathcal{L}", "calligraphic" },
+      { "\\mathtt{x}", "monospace" },
+      { "\\mathsf{y}", "sans-serif" },
+      -- Not only glyph ranges: \require and autoload pull in a whole TeX package
+      -- mid-render through the same mechanism.
+      { "\\require{verb}\\verb|x|", "a package loaded by \\require" },
+      { "\\href{http://example.com}{y}", "a package loaded by autoload" },
+    }
+
+    local results = {}
+    for i, case in ipairs(cases) do
+      render.daemon.request({ equation = case[1], display = true, color = "e0def4" }, function(res)
+        results[i] = res
+      end)
+    end
+    assert.is_true(
+      wait(function()
+        return vim.tbl_count(results) == #cases
+      end),
+      "renders did not complete"
+    )
+
+    for i, case in ipairs(cases) do
+      local what = case[1] .. " (" .. case[2] .. ")"
+      assert.is_true(results[i].ok, what .. ": " .. tostring(results[i].err))
+      -- MathJax bakes a failure into the image as an error box, so res.ok alone
+      -- is not the question -- an error box is a perfectly valid SVG.
+      local err = results[i].svg:match('data%-mjx%-error="([^"]*)"')
+      assert.is_nil(err, what .. " rendered an error box: " .. tostring(err))
+    end
+    render.daemon.reset()
+  end)
+
+  -- \require{mhchem} is deliberately absent above. It fails for an unrelated
+  -- reason that the promise API cannot fix: MathJax 4 splits mhchem's glyphs into
+  -- @mathjax/mathjax-mhchem-font-extension, which this project does not depend on,
+  -- so the loader rejects with `Can't load
+  -- "@mathjax/mathjax-mhchem-font-extension/svg.js"` and MathJax renders
+  -- "Extension mhchem failed to load". Adding that dependency is the fix; until
+  -- then \ce{..} does not render and the fixture says so.
+
+  -- #10: colouring by wrapping the source in \color{..}{..} is illegal around an
+  -- environment, and every eqnav render passes a colour. The node-level spec
+  -- (tests/daemon_xml_spec.mjs) owns the colour contract in detail; this one
+  -- proves the Lua pipeline delivers it end to end, since render_all is what
+  -- decides the colour and writes the cache.
+  it("renders display-math environments without an error box", function()
+    if not (has_node and has_raster) then
+      pending("renderer toolchain unavailable")
+      return
+    end
+    local envs = {
+      "\\begin{equation} x = 1 \\end{equation}",
+      "\\begin{align} a &= b \\\\ c &= d \\end{align}",
+      "\\begin{gather} p = q \\\\ r = s \\end{gather}",
+      "\\begin{multline} a + b \\\\ + c \\end{multline}",
+      "\\begin{eqnarray} \\alpha & = & \\beta \\end{eqnarray}",
+    }
+    local text = {}
+    for _, e in ipairs(envs) do
+      table.insert(text, "$$" .. e .. "$$\n")
+    end
+    local bufnr = helpers.buf(table.concat(text, "\n"), "markdown")
+    local eqs = scan.scan(bufnr)
+    assert.are.equal(#envs, #eqs)
+
+    local results = {}
+    -- force: a warm cache would serve yesterday's error boxes and never reach
+    -- the daemon, which is exactly how this stayed hidden.
+    render.render_all(eqs, function(index, png, err)
+      results[index] = { png = png, err = err }
+    end, { force = true })
+    assert.is_true(
+      wait(function()
+        return vim.tbl_count(results) == #envs
+      end),
+      "renders did not complete"
+    )
+
+    for i, env in ipairs(envs) do
+      assert.is_nil(results[i].err, env .. " -> " .. tostring(results[i].err))
+      assert.is_truthy(results[i].png, env .. " produced no png")
+      local svg_path = cache.get_svg(eqs[i].id)
+      assert.is_truthy(svg_path, env .. ": no cached svg")
+      local fh = assert(io.open(svg_path, "r"))
+      local svg = fh:read("*a")
+      fh:close()
+      local err = svg:match('data%-mjx%-error="([^"]*)"')
+      assert.is_nil(err, env .. " rendered an error box: " .. tostring(err))
+    end
+  end)
+
   it("serves a second render of the same content from cache", function()
     if not (has_node and has_raster) then
       pending("renderer toolchain unavailable")
