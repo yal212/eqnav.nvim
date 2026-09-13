@@ -32,14 +32,13 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// TeX packages loaded up front. `autoload` + `require` let MathJax pull in the
-// rest on demand, so this list only needs to cover what documents use without
-// asking (\begin{align}, \newcommand, \color for theme matching).
-// TeX packages loaded up front. Anything not built into `input/tex` also needs
-// a matching "[tex]/<name>" entry in the loader list below -- listing it here
-// alone gets you a "Package not found. Omitted." warning and silently missing
-// macros. `color` is not optional: it is how rendered glyphs match the
-// colorscheme. `autoload` + `require` pull in the long tail on demand.
+// TeX packages loaded up front. Anything not built into `input/tex` also needs a
+// matching "[tex]/<name>" entry in the loader list below -- listing it here alone
+// gets you a "Package not found. Omitted." warning and silently missing macros.
+// `autoload` + `require` pull in the long tail on demand, so this list only needs
+// to cover what documents use without asking (\begin{align}, \newcommand).
+// `color` is kept for equations that colour themselves with \color / \textcolor;
+// eqnav's own theme matching no longer goes through TeX at all -- see colorize().
 const BUILTIN_PACKAGES = ["base", "ams", "newcommand", "configmacros", "noundefined", "autoload", "require", "textmacros"];
 const EXTENSION_PACKAGES = [
   "color", "noerrors", "boldsymbol", "braket", "cancel", "mathtools",
@@ -120,13 +119,13 @@ async function boot() {
 // cannot execute; those must not take the document's \newcommand definitions
 // down with them. (Same approach Overleaf takes.)
 let lastPreamble = null;
-function applyPreamble(preamble) {
+async function applyPreamble(preamble) {
   if (!preamble || preamble === lastPreamble) return;
   lastPreamble = preamble;
   for (const line of preamble.split("\n")) {
     const t = line.trim();
     if (!t || t.startsWith("%")) continue;
-    try { MathJax.tex2svg(t, { display: false }); } catch { /* expected, skip */ }
+    try { await MathJax.tex2svgPromise(t, { display: false }); } catch { /* expected, skip */ }
   }
 }
 
@@ -148,14 +147,39 @@ function stampPixelSize(adaptor, svg, exPx) {
   return { width: w, height: h, depth };
 }
 
-function render(equation, { display = false, color = null, preamble = null, ex = 8 } = {}) {
-  applyPreamble(preamble);
-  const tex = color ? `\\color{#${String(color).replace(/^#/, "")}}{${equation}}` : equation;
-  const node = MathJax.tex2svg(tex, { display });
+// Colour by resolving the currentColor attributes MathJax draws every glyph
+// with. Two ways not to do this, both of which were tried:
+//
+//   \color{#hex}{equation} -- wrapping the source in a TeX group. An environment
+//   cannot legally sit inside a group, so MathJax answers every \begin{align},
+//   \begin{equation}, \begin{gather}, ... with an "Erroneous nesting of equation
+//   structures" error box. Since a colour is always passed, that was every
+//   environment in every document.
+//
+//   style="color: #hex" on the root <svg>, leaving the glyphs as currentColor.
+//   librsvg resolves it, but ImageMagick -- raster.lua's fallback when librsvg is
+//   absent -- resolves it to nothing and rasterizes a completely blank PNG.
+//
+// Rewriting the attributes keeps the user's TeX untouched and is understood by
+// both rasterizers. export/html.lua reverses it to hand colour back to CSS.
+function colorize(xml, color) {
+  if (!color) return xml;
+  const hex = "#" + String(color).replace(/^#/, "");
+  return xml.replace(/(fill|stroke)="currentColor"/g, `$1="${hex}"`);
+}
+
+// tex2svgPromise, not tex2svg: @mathjax/mathjax-newcm-font fetches most of its
+// glyph ranges on demand (double-struck, fraktur, calligraphic, monospace,
+// sans-serif, ...) and \require{..} loads a package mid-render. Both raise
+// MathJax's Retry signal, which only the promise API resolves -- the synchronous
+// call simply throws, so \mathbb{R} never rendered at all.
+async function render(equation, { display = false, color = null, preamble = null, ex = 8 } = {}) {
+  await applyPreamble(preamble);
+  const node = await MathJax.tex2svgPromise(equation, { display });
   const adaptor = MathJax.startup.adaptor;
   const svg = node.children[0];
   const dims = stampPixelSize(adaptor, svg, ex);
-  return { svg: adaptor.serializeXML(svg), ...dims };
+  return { svg: colorize(adaptor.serializeXML(svg), color), ...dims };
 }
 
 async function main() {
@@ -171,7 +195,7 @@ async function main() {
 
   if (o.input) {
     const eq = await fs.readFile(o.input, "utf8");
-    const r = render(eq, { display: o.display, color: o.color, ex: o.ex });
+    const r = await render(eq, { display: o.display, color: o.color, ex: o.ex });
     if (o.output) await fs.writeFile(o.output, r.svg, "utf8");
     else stdout.write(r.svg);
     return;
@@ -190,7 +214,7 @@ async function main() {
       continue;
     }
     try {
-      const r = render(req.equation, {
+      const r = await render(req.equation, {
         display: !!req.display,
         color: req.color,
         preamble: req.preamble,
