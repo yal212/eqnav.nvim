@@ -24,15 +24,13 @@ Two things to know before you start:
 Surfaced by this fixture. Expected until the issues close — delete the
 corresponding bullet as each is fixed.
 
-- **[#9] Nested environments are indexed twice.** Visible in `all-symbols.tex`
-  rather than here — a `cases` inside an `equation` yields both an outer and an
-  inner entry.
-- **`empheq`'s `box=` option does not render** — section 20 shows *"Invalid
-  option: box"*. MathJax's `empheq` implementation takes `left=`/`right=` but
-  not `box=`, so the fixture row exercises an option upstream does not support.
-  Plain `\begin{empheq}{align}` and `left=` both render correctly.
+None open right now: every finding this fixture has surfaced so far is fixed.
 
-Fixed and deleted from this list: **#10** (every environment error-boxing on
+Fixed and deleted from this list: **#13** (`empheq`'s `box=` option, which
+MathJax's `empheq` does not implement — section 20 asks for `left=` instead,
+which it does), **#9** (a `cases`, `split` or `dcases` nested in an `equation`
+indexed twice by the regex scanner — visible in `all-symbols.tex` rather than
+here), **#10** (every environment error-boxing on
 *"Erroneous nesting of equation structures"*, because the daemon coloured by
 wrapping the source in `\color{...}{...}`), **#8** (`\mathbb`, `\mathfrak`,
 `\mathcal`, `\mathsf`, `\mathtt`, `\leadsto`, `\checkmark` and the `\require`
@@ -267,7 +265,10 @@ $$\underbracket{a + b} \qquad \overbracket{c + d} \qquad \xleftrightharpoons{u} 
 
 ## 20 · Package: empheq
 
-$$\begin{empheq}[box=\fbox]{align} a &= b + c \\ d &= e \end{empheq}$$
+MathJax's `empheq` takes `left=`/`right=` and not `box=`, so this row asks for
+an option it implements. Plain `\begin{empheq}{align}` renders too.
+
+$$\begin{empheq}[left=L\Rightarrow]{align} a &= b + c \\ d &= e \end{empheq}$$
 
 ## 21 · Package: cases (numcases)
 
