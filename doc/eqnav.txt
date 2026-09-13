@@ -112,6 +112,11 @@ configurable through `keymaps` (see |eqnav-configuration|).
 `j` and `k` move between equations rather than between lines. The index holds
 no prose, so a line is the wrong unit of travel.
 
+Moving to an equation scrolls the whole of it into view -- the rendered body
+as well as the header -- so the last entry's image is not left below the
+bottom of the pane. An equation taller than the pane is shown from its header
+down.
+
 eqnav sets no global mappings. To bind the toggle: >lua
 
     vim.keymap.set("n", "<leader>e", "<cmd>Eqnav<cr>", { desc = "Equations" })

@@ -218,6 +218,27 @@ function M.set_image(index, png, err, id)
   M.render()
 end
 
+--- Bring the whole of `entry` into view, not just its header.
+---
+--- Neovim scrolls to keep the *cursor* visible, and the cursor sits on the
+--- header -- so a body only ever came into view because the *next* header
+--- pulled the window down past it. The last entry has no next header, which
+--- left its image below the last visible row, reachable only through keys the
+--- index does not advertise.
+---
+--- Touching the last body row first hands the scrolling to Neovim, which is
+--- what keeps this right under an image backend: those rows are virtual lines
+--- or terminal overlays, not text this could measure itself. Moving back to
+--- the header scrolls a second time only when the entry is taller than the
+--- window, landing the header at the top with as much of the body as fits.
+---@param entry eqnav.Entry
+local function reveal(entry)
+  local last = vim.api.nvim_buf_line_count(current.buf)
+  local bottom = math.min(entry.body_row + entry.rows - 1, last)
+  vim.api.nvim_win_set_cursor(current.win, { bottom, 0 })
+  vim.api.nvim_win_set_cursor(current.win, { entry.header_row, 0 })
+end
+
 ---@param n integer 1-indexed equation ordinal
 function M.goto_entry(n)
   if not current or not M.is_open() then
@@ -227,7 +248,7 @@ function M.goto_entry(n)
   if not entry then
     return
   end
-  vim.api.nvim_win_set_cursor(current.win, { entry.header_row, 0 })
+  reveal(entry)
   M.highlight_current()
 end
 
@@ -437,6 +458,10 @@ local function open_window(source_buf)
   vim.wo[win].cursorline = false
   vim.wo[win].foldcolumn = "0"
   vim.wo[win].list = false
+  -- The index places entries itself (see reveal()); a non-zero 'scrolloff'
+  -- scrolls ahead of the cursor and pushes a tall entry's body back off the
+  -- bottom, so it does not inherit the user's.
+  vim.wo[win].scrolloff = 0
   return buf, win
 end
 

@@ -22,8 +22,27 @@ More prose.
 $$e^{i\pi} + 1 = 0$$
 ]]
 
+--- A document of `n` display equations, with equation `tall` (if given) padded
+--- to `reps` terms so its wrapped text body is several rows deep.
+---@param n integer
+---@param tall? integer
+---@param reps? integer defaults to more rows than a short index pane has
+local function sections(n, tall, reps)
+  local out = {}
+  for i = 1, n do
+    local tex = i == tall and (string.rep("\\alpha + ", reps or 70) .. "1")
+      or ("x_" .. i .. " = " .. i)
+    vim.list_extend(out, { "## Section " .. i, "", "$$" .. tex .. "$$", "" })
+  end
+  return table.concat(out, "\n")
+end
+
 -- Saved once, restored after every test: the image-cleanup tests patch it.
 local text_clear = require("eqnav.display.text").clear
+
+-- Likewise for the geometry: the scrolling tests shrink the window, and one of
+-- them sets the global 'scrolloff' the index is supposed to be immune to.
+local saved_lines, saved_scrolloff = vim.o.lines, vim.o.scrolloff
 
 local function open(text)
   local bufnr = helpers.buf(text or DOC, "markdown")
@@ -39,6 +58,7 @@ describe("view", function()
   after_each(function()
     eqnav.close()
     require("eqnav.display.text").clear = text_clear
+    vim.o.lines, vim.o.scrolloff = saved_lines, saved_scrolloff
   end)
 
   it("uses the text backend when no image backend is available", function()
@@ -109,6 +129,104 @@ describe("view", function()
     view.prev()
     view.prev() -- past the start
     assert.are.equal(1, view.cursor_entry())
+  end)
+
+  -- Neovim scrolls to keep the *cursor* visible, and the cursor sits on the
+  -- header -- so a body came into view only because the *next* header pulled the
+  -- window down past it. The last entry has no next header, and `j` stops there,
+  -- so its image sat below the last visible row with no advertised key to reach
+  -- it.
+  it("scrolls the last entry's body into view, not just its header", function()
+    vim.o.lines = 14
+    -- Pinned, not inherited: a non-zero 'scrolloff' scrolls ahead of the cursor
+    -- and hides this by accident. 0 is Neovim's default and what the report ran
+    -- with.
+    vim.o.scrolloff = 0
+    open(sections(6))
+    local state = view.current()
+    local win = state.win
+    local last = state.entries[#state.entries]
+    local bottom = last.body_row + last.rows - 1
+    -- Without this the test is vacuous: the whole index would fit on screen and
+    -- the body would be visible whatever the cursor did.
+    assert.is_true(
+      bottom > vim.api.nvim_win_get_height(win),
+      ("index fits the pane: body ends at %d, window is %d rows"):format(
+        bottom,
+        vim.api.nvim_win_get_height(win)
+      )
+    )
+
+    -- Walk with `j`, as the report did. A single long jump is not the same
+    -- thing: Neovim re-centres the cursor when the scroll distance is large,
+    -- and a centred cursor happens to drag the body on screen with it.
+    view.goto_entry(1)
+    for _ = 1, #state.equations do
+      view.next()
+    end
+
+    assert.is_true(
+      vim.fn.line("w$", win) >= bottom,
+      ("body ends at %d, last visible row is %d"):format(bottom, vim.fn.line("w$", win))
+    )
+    assert.are.equal(
+      last.header_row,
+      vim.api.nvim_win_get_cursor(win)[1],
+      "the cursor must still sit on the header"
+    )
+  end)
+
+  -- The same problem in miniature, and the one `open()` itself walks into via
+  -- goto_entry(1): an entry taller than the pane cannot be shown whole, so it
+  -- has to be shown from the top rather than scrolled until its header is gone.
+  it("keeps the header on screen when the entry is taller than the pane", function()
+    vim.o.lines = 12
+    vim.o.scrolloff = 0
+    open(sections(1, 1))
+    local state = view.current()
+    local entry = state.entries[1]
+    assert.is_true(
+      entry.rows > vim.api.nvim_win_get_height(state.win),
+      ("fixture is not tall enough: %d rows in a %d-row window"):format(
+        entry.rows,
+        vim.api.nvim_win_get_height(state.win)
+      )
+    )
+
+    view.goto_entry(1)
+
+    assert.is_true(
+      vim.fn.line("w0", state.win) <= entry.header_row,
+      ("header at %d is above the first visible row %d"):format(
+        entry.header_row,
+        vim.fn.line("w0", state.win)
+      )
+    )
+    assert.is_true(vim.fn.line("w$", state.win) >= entry.body_row, "none of the body is on screen")
+  end)
+
+  -- A global 'scrolloff' re-centres the cursor on the header and pushes the body
+  -- straight back off the bottom, so the index pins its own.
+  it("reveals a tall entry's body under a global scrolloff", function()
+    vim.o.lines = 12
+    vim.o.scrolloff = 999
+    -- Tall enough to need scrolling, short enough to fit the pane once it does.
+    open(sections(8, 4, 30))
+    local state = view.current()
+
+    view.goto_entry(1)
+    for _ = 1, 3 do
+      view.next()
+    end
+
+    assert.are.equal(4, view.cursor_entry())
+
+    local entry = state.entries[4]
+    local bottom = entry.body_row + entry.rows - 1
+    assert.is_true(
+      vim.fn.line("w$", state.win) >= bottom,
+      ("body ends at %d, last visible row is %d"):format(bottom, vim.fn.line("w$", state.win))
+    )
   end)
 
   it("binds j and k to equation navigation inside the index only", function()
