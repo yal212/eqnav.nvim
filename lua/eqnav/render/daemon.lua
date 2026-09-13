@@ -10,6 +10,10 @@ local M = {}
 
 local state = {
   proc = nil, ---@type vim.SystemObj|nil
+  -- Bumped on every start and every stop. The async callbacks below capture the
+  -- generation they belong to, so a process we have already replaced can never
+  -- write over the state of the one that replaced it.
+  gen = 0,
   ready = false,
   next_id = 1,
   pending = {}, ---@type table<integer, fun(res: table)>
@@ -47,6 +51,17 @@ local function fail(msg)
   state.queue = {}
 end
 
+--- Send everything that queued up while the daemon was booting.
+local function flush()
+  if not state.proc then
+    return
+  end
+  for _, payload in ipairs(state.queue) do
+    state.proc:write(payload)
+  end
+  state.queue = {}
+end
+
 ---@param line string
 local function handle_line(line)
   if vim.trim(line) == "" then
@@ -58,10 +73,7 @@ local function handle_line(line)
   end
   if res.ready then
     state.ready = true
-    for _, payload in ipairs(state.queue) do
-      state.proc:write(payload)
-    end
-    state.queue = {}
+    flush()
     return
   end
   local cb = res.id and state.pending[res.id]
@@ -71,8 +83,11 @@ local function handle_line(line)
   end
 end
 
-local function on_stdout(_, data)
-  if not data then
+---@param gen integer the daemon generation this pipe belongs to
+local function on_stdout(gen, data)
+  -- Trailing bytes from a daemon we have already replaced must not be spliced
+  -- onto the current one's output.
+  if not data or state.gen ~= gen then
     return
   end
   state.buffer = state.buffer .. data
@@ -107,6 +122,9 @@ function M.start()
     return false
   end
 
+  local gen = state.gen + 1
+  state.gen = gen
+
   local stderr_tail = {}
   local ok, proc = pcall(
     vim.system,
@@ -115,7 +133,9 @@ function M.start()
       stdin = true,
       text = true,
       cwd = M.root(),
-      stdout = vim.schedule_wrap(on_stdout),
+      stdout = vim.schedule_wrap(function(_, data)
+        on_stdout(gen, data)
+      end),
       stderr = function(_, data)
         if data and not data:match("No version information") then
           table.insert(stderr_tail, data)
@@ -126,11 +146,21 @@ function M.start()
       end,
     },
     vim.schedule_wrap(function(res)
+      -- A stop() or a later start() has already superseded this process. Its
+      -- exit says nothing about the daemon running now, and clearing the state
+      -- here would null out a live handle.
+      if state.gen ~= gen then
+        return
+      end
       state.proc = nil
       state.ready = false
-      if res.code ~= 0 and state.failed == nil then
+      -- A signalled death reports code 0, so the signal has to be checked too:
+      -- otherwise an OOM kill looks like a clean exit and strands every request.
+      if (res.code ~= 0 or res.signal ~= 0) and state.failed == nil then
+        local how = res.signal ~= 0 and ("killed by signal " .. res.signal)
+          or ("exited (" .. res.code .. ")")
         local tail = vim.trim(table.concat(stderr_tail, ""))
-        fail("mathjax daemon exited (" .. res.code .. ") " .. tail:sub(1, 300))
+        fail("mathjax daemon " .. how .. " " .. tail:sub(1, 300))
       end
     end)
   )
@@ -144,6 +174,9 @@ function M.start()
 end
 
 function M.stop()
+  -- Bump first: the kill below delivers its on_exit later, and by then it must
+  -- not be able to touch whatever daemon is running.
+  state.gen = state.gen + 1
   if state.proc then
     pcall(function()
       state.proc:kill("sigterm")
@@ -151,9 +184,15 @@ function M.stop()
     state.proc = nil
   end
   state.ready = false
-  state.pending = {}
   state.queue = {}
   state.buffer = ""
+  -- Callers are still waiting on these. Dropping them silently stalls
+  -- render_all, whose pump only advances from a callback.
+  local pending = state.pending
+  state.pending = {}
+  for _, cb in pairs(pending) do
+    cb({ ok = false, err = "render daemon stopped" })
+  end
 end
 
 --- Reset after a failure so the next render tries again.
@@ -191,7 +230,7 @@ function M.request(req, cb)
     ex = req.ex,
   }) .. "\n"
 
-  if state.ready then
+  if state.ready and state.proc then
     state.proc:write(payload)
   else
     table.insert(state.queue, payload)
