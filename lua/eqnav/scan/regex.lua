@@ -115,6 +115,10 @@ function M.scan(bufnr)
   end
 
   -- Environments first: their bodies may contain $ that must not be re-matched.
+  -- `consumed` is read here as well as by the delimiter loop below: a `cases`
+  -- or `split` nested in an `equation` is part of that entry, not one of its
+  -- own, and ENVIRONMENTS lists the outer forms first so the enclosing span is
+  -- always marked by the time the inner one is scanned.
   local consumed = {}
   for _, env in ipairs(ENVIRONMENTS) do
     local pattern = "\\begin%s*{" .. env .. "%*?}"
@@ -124,15 +128,19 @@ function M.scan(bufnr)
       if not sb then
         break
       end
-      local eb, ee = joined:find("\\end%s*{" .. env .. "%*?}", se)
-      if not eb then
-        break
+      if consumed[sb] then
+        init = se + 1
+      else
+        local eb, ee = joined:find("\\end%s*{" .. env .. "%*?}", se)
+        if not eb then
+          break
+        end
+        add(sb, ee, true)
+        for i = sb, ee do
+          consumed[i] = true
+        end
+        init = ee + 1
       end
-      add(sb, ee, true)
-      for i = sb, ee do
-        consumed[i] = true
-      end
-      init = ee + 1
     end
   end
 

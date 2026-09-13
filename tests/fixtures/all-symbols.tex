@@ -15,21 +15,18 @@
 % The equation count here will NOT match all-symbols.md, and should not: the
 % two files cover different delimiter sets on purpose.
 %
-% KNOWN FINDINGS (2026-09-13), both surfaced by this fixture. Remove these
-% notes once fixed; until then they are expected, not new breakage:
+% KNOWN FINDINGS (2026-09-13): none. Everything in this file renders, and the
+% three sections nesting split/cases/dcases inside an equation produce one
+% entry each. Record anything new here as it is found, and delete the note as
+% it is fixed.
 %
-%   * [#9] Nested environments are indexed twice. The three sections below that
-%     nest split/cases/dcases inside equation each produce TWO entries, an
-%     outer and an inner. lua/eqnav/scan/regex.lua fills its `consumed` table
-%     in the environment loop but never checks it there, only in the
-%     delimiter loop below it.
-%   * [#8] \mathbb, \mathfrak, \mathcal, \mathsf, \mathtt, Hebrew letters
-%     and several arrows fail to render. The daemon calls the synchronous
-%     MathJax.tex2svg, and those glyphs live in font ranges MathJax loads on
-%     demand, which requires the promise API.
-%   * [#10] Every environment below renders as an error box: the daemon wraps
-%     each equation in \color{...}{...} to colour it, and an environment
-%     cannot sit inside a TeX group. This affects every section here.
+% Fixed since this fixture was written: #9 (those nested environments were
+% indexed twice, because lua/eqnav/scan/regex.lua filled its `consumed` table
+% in the environment loop but only checked it in the delimiter loop below),
+% #10 (every environment error-boxed on "Erroneous nesting of equation
+% structures", because the daemon coloured by wrapping the source in
+% \color{...}{...}) and #8 (\mathbb, \mathfrak and friends, whose glyphs live
+% in font ranges MathJax only loads through the promise API).
 
 \documentclass{article}
 
