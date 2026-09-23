@@ -360,6 +360,58 @@ describe("render pipeline", function()
     assert.is_truthy(got.err)
     render.daemon.reset()
   end)
+
+  --- Run :EqnavExport on a buffer holding `text` and return the page it opened,
+  --- or nil if it never got that far. vim.ui.open is stubbed out: the export
+  --- ends by launching a browser.
+  local function export(text)
+    vim.api.nvim_set_current_buf(helpers.buf(text, "markdown"))
+    local path = vim.fn.tempname() .. ".html"
+    local real_open, opened = vim.ui.open, nil
+    vim.ui.open = function(p)
+      opened = p
+    end
+    local ok, err = pcall(function()
+      require("eqnav.export.html").export_and_open(path)
+      wait(function()
+        return opened ~= nil
+      end)
+    end)
+    vim.ui.open = real_open
+    assert(ok, err)
+    if opened ~= path then
+      return nil
+    end
+    local fh = assert(io.open(path))
+    local page = fh:read("*a")
+    fh:close()
+    return page
+  end
+
+  -- #47: render.enabled governs the terminal view. The export is the escape
+  -- hatch for a terminal that cannot show images, so it renders regardless --
+  -- and it waits for one callback per equation, so render_all returning
+  -- without any left it waiting forever.
+  it("exports with rendering disabled even when the renderer cannot run", function()
+    require("eqnav").setup({ render = { enabled = false, node = "definitely-not-a-real-binary" } })
+    render.daemon.reset()
+    local page = export("$$x^2 + " .. vim.uv.hrtime() .. "$$")
+    render.daemon.reset()
+    assert.is_truthy(page, "export never finished")
+    assert.is_truthy(page:find("not rendered", 1, true))
+  end)
+
+  it("renders for export with rendering disabled", function()
+    if not has_node then
+      pending("node or @mathjax/src unavailable")
+      return
+    end
+    require("eqnav").setup({ render = { enabled = false, color = "e0def4" } })
+    -- A fresh equation, so a warm cache cannot stand in for the render.
+    local page = export("$$y^2 + " .. vim.uv.hrtime() .. "$$")
+    assert.is_truthy(page, "export never finished")
+    assert.is_truthy(page:find("<svg", 1, true), "export did not render")
+  end)
 end)
 
 --- Every chunk of a PNG file, in order, as { type, data, crc_ok }.
