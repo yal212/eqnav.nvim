@@ -253,19 +253,33 @@ async function run() {
 
     // Inline math is one <svg>, all of it. MathJax splits inline math at every
     // place it could break, one <svg> each, and the daemon kept the first: this
-    // came back as a lone `a` (#46).
+    // came back as a lone `a` (#46). Display math breaks at `width` ex when one is
+    // given (#41), and not at all without one.
     const INLINE = "a+b+c+d=e+f+g+h";
-    const il = await session([
+    const LONG = "(a+b)^2 = a^2 + 2ab + b^2 + c^2 + d^2 + e^2 + f^2 + g^2 + h^2 + i^2 + j^2 + k^2";
+    const lb = await session([
       { id: 1, equation: INLINE, display: false },
       { id: 2, equation: INLINE, display: true },
+      { id: 3, equation: LONG, display: true, width: 25 },
+      { id: 4, equation: LONG, display: true },
     ]);
-    const [inl, disp] = [1, 2].map((id) => il.get(id));
+    const [inl, disp, broken, whole] = [1, 2, 3, 4].map((id) => lb.get(id));
     check(
       "renders all of an inline equation",
       inl.ok && Math.abs(inl.width - disp.width) < 1,
       inl.ok ? `inline ${inl.width}ex, display ${disp.width}ex` : inl.err
     );
     check("renders inline math as one <svg>", inl.ok && inl.svg.match(/<svg/g).length === 1);
+    check(
+      "breaks display math to fit the width it is given",
+      broken.ok && broken.width <= 25 && broken.height > 2 * whole.height,
+      broken.ok ? `${broken.width} x ${broken.height}ex` : broken.err
+    );
+    check(
+      "leaves display math whole without a width",
+      whole.ok && whole.width > 25,
+      whole.ok ? `${whole.width}ex` : whole.err
+    );
 
     if (!hasRsvg) console.log("  note: rsvg-convert not on PATH, rasterization checks skipped");
   } finally {

@@ -14,6 +14,7 @@ local M = {}
 ---@field clear fun(bufnr: integer)
 ---@field images boolean whether this backend actually shows pixels
 ---@field geometry? fun(): eqnav.Geometry|nil cell size and density to render for
+---@field overflows? fun(png: string, width: integer): boolean shown shrunk to fit `width` columns
 
 -- Order matters: snacks needs no luarock and handles tmux passthrough itself,
 -- so it is tried first. `text` always succeeds, which is what keeps the whole

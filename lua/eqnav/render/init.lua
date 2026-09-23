@@ -46,8 +46,13 @@ end
 --- started, so a caller can tell a result that is still wanted from one whose
 --- equation has since been edited away. See view.set_image.
 ---@param equations eqnav.Equation[]
+---
+--- `opts.width` is the index's width in columns. Display math wider than that
+--- is broken over lines to fit it (#41), where it used to be drawn whole and
+--- shrunk by the image backend, glyphs and all. It needs the display geometry
+--- to know how many ex fit in a column, so without that it does nothing.
 ---@param cb fun(index: integer, png: string|nil, err: string|nil, id: string)
----@param opts? { force?: boolean }
+---@param opts? { force?: boolean, width?: integer }
 function M.render_all(equations, cb, opts)
   opts = opts or {}
   if not config.options.render.enabled or #equations == 0 then
@@ -63,12 +68,16 @@ function M.render_all(equations, cb, opts)
   -- whole cells so it is shown 1:1 (#6, #17). Without it, as before.
   local backend = display.get()
   local geom = backend.images and backend.geometry and backend.geometry() or nil
+  -- The room for an image in ex: the index width less the column the entry
+  -- header leaves free, in CSS px (a cell is device px), over px per ex.
+  local width = geom and opts.width or nil
+  local width_ex = width and (width - 1) * geom.cell_width / geom.scale / ex or nil
 
   local todo = {}
   for _, eq in ipairs(equations) do
     -- The colour is decided here, not at scan time, so a colorscheme change
     -- produces a different id and therefore a fresh render.
-    eq.id = util.hash(eq.tex, eq.display, color, ex, geom)
+    eq.id = util.hash(eq.tex, eq.display, color, ex, geom, width)
     if opts.force then
       cache.invalidate(eq.id)
     end
@@ -102,6 +111,7 @@ function M.render_all(equations, cb, opts)
         color = color,
         preamble = preamble,
         ex = ex,
+        width = width_ex,
       }, function(res)
         if not res.ok then
           active = active - 1

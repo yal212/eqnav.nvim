@@ -13,6 +13,7 @@ M.ns = vim.api.nvim_create_namespace("eqnav.view")
 ---@field body_row integer 1-indexed row where the image/text starts
 ---@field rows integer body height in lines
 ---@field width integer window width the body was laid out for
+---@field shrunk boolean the backend shrinks the image to fit `width`; measured with `rows`
 ---@field sized_png string|nil the png `rows` was measured from; set_image changes `png` first
 ---@field png string|nil
 ---@field err string|nil
@@ -27,6 +28,7 @@ M.ns = vim.api.nvim_create_namespace("eqnav.view")
 ---@field anchor? eqnav.Anchor where render() is keeping the cursor
 ---@field dirty? boolean set_image() recorded a result render() has not shown yet
 ---@field scheduled? boolean a repaint for `dirty` is already queued
+---@field render_width? integer the index width the equations were last rendered for
 local current = nil
 
 function M.current()
@@ -44,6 +46,7 @@ local HL = {
   EqnavLocation = { link = "Comment" },
   EqnavPending = { link = "Comment" },
   EqnavError = { link = "DiagnosticError" },
+  EqnavShrunk = { link = "Comment" },
   EqnavCurrent = { link = "CursorLine" },
   EqnavSource = { link = "Special" },
 }
@@ -54,28 +57,37 @@ function M.setup_highlights()
   end
 end
 
+--- Marks an entry whose image is shown smaller than the rest. Display math is
+--- broken over lines to fit the index (#41); what cannot be -- a wide matrix,
+--- inline math -- is shrunk to fit by the backend, and a smaller entry should
+--- read as deliberate.
+local SHRUNK = "⟷ "
+
 --- Format an entry's header. Real buffer text, not virtual text, so `/`, `:g`
 --- and the text backend all keep working and a failed render still leaves
 --- something readable behind.
 ---@param eq eqnav.Equation
 ---@param width integer
+---@param shrunk? boolean mark the image as shown smaller than the rest
 ---@return string, table[] line, highlight spans
-local function header(eq, width)
+local function header(eq, width, shrunk)
   local num = string.format("%3d", eq.index)
   local lnum = scan.mark_pos(eq)
   local loc = "L" .. lnum
+  local mark = shrunk and SHRUNK or ""
   local label = eq.label and (" " .. eq.label) or ""
   local context = eq.context or ""
 
-  local fixed = #num + 2 + #loc + 2 + #label
+  local fixed = #num + 2 + vim.fn.strdisplaywidth(mark) + #loc + 2 + #label
   local room = math.max(6, width - fixed - 2)
   if vim.fn.strdisplaywidth(context) > room then
     context = vim.fn.strcharpart(context, 0, room - 1) .. "…"
   end
 
   local left = num .. "  " .. context .. label
-  local pad = math.max(1, width - vim.fn.strdisplaywidth(left) - #loc - 1)
-  local line = left .. string.rep(" ", pad) .. loc
+  local pad =
+    math.max(1, width - vim.fn.strdisplaywidth(left) - vim.fn.strdisplaywidth(mark) - #loc - 1)
+  local line = left .. string.rep(" ", pad) .. mark .. loc
 
   local spans = {}
   table.insert(spans, { 0, #num, "EqnavIndex" })
@@ -85,6 +97,9 @@ local function header(eq, width)
   end
   if #label > 0 then
     table.insert(spans, { ctx_start + #context, ctx_start + #context + #label, "EqnavLabel" })
+  end
+  if #mark > 0 then
+    table.insert(spans, { #line - #loc - #mark, #line - #loc, "EqnavShrunk" })
   end
   table.insert(spans, { #line - #loc, #line, "EqnavLocation" })
   return line, spans
@@ -127,6 +142,15 @@ local function measure_anchor()
   }
 end
 
+--- Columns the index has to lay entries out in.
+---@return integer
+local function index_width()
+  return current.win
+      and vim.api.nvim_win_is_valid(current.win)
+      and vim.api.nvim_win_get_width(current.win)
+    or config.options.window.width
+end
+
 --- Rebuild the index buffer from the current equation list.
 function M.render()
   if not current or not vim.api.nvim_buf_is_valid(current.buf) then
@@ -136,10 +160,7 @@ function M.render()
   -- finds nothing left to do.
   current.dirty = false
   local backend = display.get()
-  local width = current.win
-      and vim.api.nvim_win_is_valid(current.win)
-      and vim.api.nvim_win_get_width(current.win)
-    or config.options.window.width
+  local width = index_width()
 
   local lines, spans, entries = {}, {}, {}
   local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current.source_buf), ":t")
@@ -158,13 +179,11 @@ function M.render()
     local png = prev and prev.png or nil
     local err = prev and prev.err or nil
 
-    local head, hspans = header(eq, width - 1)
-    table.insert(lines, head)
-    local header_row = #lines
-    table.insert(spans, { row = header_row, cols = hspans })
-
-    local body_row = #lines + 1
+    -- The body first: whether the header is marked depends on it.
+    local header_row = #lines + 1
+    local body_row = header_row + 1
     local body = nil
+    local shrunk = false
     if err then
       body = { "    " .. err }
     elseif png then
@@ -176,16 +195,26 @@ function M.render()
     end
 
     if body == nil then
-      -- An image already laid out at this width keeps its height: `r` deletes
-      -- the file to re-render it (cache.invalidate), and measuring a missing
-      -- file gives one row, collapsing the entry until the new one lands.
-      local rows = prev and prev.sized_png == png and prev.width == width and prev.rows
-        or backend.rows(eq, png, width)
+      -- An image already laid out at this width keeps its height and its
+      -- mark: `r` deletes the file to re-render it (cache.invalidate), and
+      -- measuring a missing file gives one row and no mark, collapsing the
+      -- entry and rewriting its header until the new one lands.
+      local rows
+      if prev and prev.sized_png == png and prev.width == width and prev.rows then
+        rows, shrunk = prev.rows, prev.shrunk == true
+      else
+        rows = backend.rows(eq, png, width)
+        shrunk = png and backend.overflows and backend.overflows(png, width) or false
+      end
       body = {}
       for _ = 1, rows do
         table.insert(body, "")
       end
     end
+
+    local head, hspans = header(eq, width - 1, shrunk)
+    table.insert(lines, head)
+    table.insert(spans, { row = header_row, cols = hspans })
 
     for _, l in ipairs(body) do
       table.insert(lines, l)
@@ -204,6 +233,7 @@ function M.render()
       body_row = body_row,
       rows = #body,
       width = width,
+      shrunk = shrunk,
       sized_png = png,
       png = png,
       err = err,
@@ -699,11 +729,12 @@ function M.open(opts)
   })
 
   if config.options.render.enabled and display.get().images then
+    current.render_width = index_width()
     require("eqnav.render").render_all(equations, function(index, png, err, id)
       if current and current.buf == buf then
         M.set_image(index, png, err, id)
       end
-    end)
+    end, { width = current.render_width })
   end
 
   if opts.focus == false and vim.api.nvim_win_is_valid(source_win) then
@@ -767,6 +798,7 @@ function M.refresh(force)
         err = prev.err,
         rows = prev.rows,
         width = prev.width,
+        shrunk = prev.shrunk,
         sized_png = prev.sized_png,
       }
     end
@@ -774,11 +806,12 @@ function M.refresh(force)
   current.anchor = keep
   M.render()
   if config.options.render.enabled and display.get().images then
+    current.render_width = index_width()
     require("eqnav.render").render_all(current.equations, function(index, png, err, id)
       if current then
         M.set_image(index, png, err, id)
       end
-    end, { force = force })
+    end, { force = force, width = current.render_width })
   end
 end
 

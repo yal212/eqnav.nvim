@@ -94,9 +94,11 @@ so listing only `tex` misses some of them.
                                                                 *:EqnavExport*
 :EqnavExport [path]     Write the index to a self-contained HTML page and open
                         it in the system browser. The page inlines the SVGs
-                        already rendered for the terminal view, follows the
-                        reader's light/dark preference, and needs no network.
-                        With no [path], writes into the cache directory.
+                        already rendered for the terminal view, so display
+                        math is broken over lines as it is in the index.
+                        It follows the reader's light/dark preference and
+                        needs no network. With no [path], writes into the
+                        cache directory.
 
                                                             *:EqnavClearCache*
 :EqnavClearCache        Remove every cached render.
@@ -124,6 +126,13 @@ Moving to an equation scrolls the whole of it into view -- the rendered body
 as well as the header -- so the last entry's image is not left below the
 bottom of the pane. An equation taller than the pane is shown from its header
 down.
+
+Display math wider than the index is broken over several lines to fit it, so
+every entry is drawn at the same size. An equation that cannot be broken, such
+as a wide matrix or inline math under |eqnav-include_inline|, is shrunk to fit
+instead, and its header is marked `⟷` (highlight group `EqnavShrunk`). Images
+are rendered for the width the index had at the time. After resizing the
+window, press `r` to render them again for the new width.
 
 eqnav sets no global mappings. To bind the toggle: >lua
 
@@ -288,8 +297,8 @@ Positions are extmarks~
     to re-render what actually changed.
 
 Renders are cached by content hash~
-    The key covers the math, display mode, colour and size — everything that
-    changes the pixels. Reopening the index on an unchanged document is
+    The key covers the math, display mode, colour and size, and in the index
+    its width -- everything that changes the pixels. Reopening the index on an unchanged document is
     instant and never starts Node. Because the colour is in the key, changing
     colorscheme produces new images rather than reusing stale ones.
 

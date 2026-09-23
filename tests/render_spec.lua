@@ -495,6 +495,17 @@ describe("cell-aligned rasterization", function()
     assert.are_not.equal(a, util.hash("x", true, "e0def4", 9))
   end)
 
+  it("keys the cache on the index width, and only when there is one", function()
+    local util = require("eqnav.scan.util")
+    local a = util.hash("x", true, "e0def4", 9, geom)
+    assert.are.equal(a, util.hash("x", true, "e0def4", 9, geom, nil))
+    assert.are_not.equal(a, util.hash("x", true, "e0def4", 9, geom, 60))
+    assert.are_not.equal(
+      util.hash("x", true, "e0def4", 9, geom, 60),
+      util.hash("x", true, "e0def4", 9, geom, 80)
+    )
+  end)
+
   -- A \tag makes MathJax size the SVG as width="100%", so the daemon reports no
   -- width, which arrives as vim.NIL: truthy, and arithmetic on it throws inside
   -- the daemon callback, so the entry waited on its render forever.
@@ -526,6 +537,60 @@ describe("cell-aligned rasterization", function()
         end, 10000),
         "the render never called back"
       )
+    end)
+    display.get = real_get
+    assert(ok, failure)
+  end)
+
+  -- #41: snacks shrinks an image wider than the index to fit it, so its glyphs
+  -- came out smaller than every other entry's. Given the index width, display
+  -- math is broken over lines to fit instead, at the one scale.
+  it("breaks display math to fit the index width", function()
+    if not (has_node and has_raster) then
+      pending("renderer toolchain unavailable")
+      return
+    end
+    local display = require("eqnav.display")
+    local real_get = display.get
+    display.get = function()
+      return {
+        name = "fake",
+        images = true,
+        geometry = function()
+          return geom
+        end,
+      }
+    end
+    local ok, failure = pcall(function()
+      local terms = {}
+      for i = 1, 20 do
+        table.insert(terms, "x_{" .. i .. "}^2")
+      end
+      local bufnr = helpers.buf("$$" .. table.concat(terms, " + ") .. "$$\n", "markdown")
+      local function render_at(width)
+        local eqs = scan.scan(bufnr)
+        local got
+        render.render_all(eqs, function(_, png, err)
+          got = { png = png, err = err }
+        end, { force = true, width = width })
+        assert.is_true(
+          wait(function()
+            return got ~= nil
+          end),
+          "the render never called back"
+        )
+        assert.is_nil(got.err, tostring(got.err))
+        local w, h = png_dims(got.png)
+        return eqs[1].id, w, h
+      end
+
+      local whole_id, whole_w, whole_h = render_at(nil)
+      local id, w, h = render_at(40)
+      assert.are_not.equal(whole_id, id, "a width must be a different render")
+      assert.is_true(whole_w > 39 * geom.cell_width, "the test equation is not over-wide")
+      -- One column is left free, as the entry header leaves it.
+      assert.is_true(w <= 39 * geom.cell_width, ("%dpx is wider than the index"):format(w))
+      assert.is_true(h >= 2 * whole_h, "the equation was not broken over lines")
     end)
     display.get = real_get
     assert(ok, failure)

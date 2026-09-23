@@ -187,6 +187,11 @@ is how equations follow your colorscheme instead of staying black on a dark back
 **The index appears before the images do.** Scanning is synchronous and fast; headers are
 drawn immediately and images fill in as they arrive.
 
+**Every entry is drawn at the same size.** Display math wider than the index is broken over
+lines to fit it. An equation that can't be broken, such as a wide matrix, is shrunk to fit
+instead and its header is marked `⟷`. After resizing the index, press `r` to render for the
+new width.
+
 ### tmux
 
 Terminal graphics need passthrough:

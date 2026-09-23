@@ -91,16 +91,22 @@ M.RENDER_VERSION = 3
 ---@param color string|nil
 ---@param ex number
 ---@param geom? eqnav.Geometry the cell size images are padded to, and the density
-function M.hash(tex, display, color, ex, geom)
-  local key = table.concat({
+---@param width? integer index columns display math is broken to fit
+function M.hash(tex, display, color, ex, geom, width)
+  local parts = {
     tostring(M.RENDER_VERSION),
     tex,
     tostring(display),
     color or "-",
     tostring(ex),
     geom and string.format("%sx%s@%s", geom.cell_width, geom.cell_height, geom.scale) or "-",
-  }, "\0")
-  return vim.fn.sha256(key):sub(1, 32)
+  }
+  -- Only when there is one, so a render with no width -- the HTML export's --
+  -- keeps the key it always had.
+  if width then
+    table.insert(parts, tostring(width))
+  end
+  return vim.fn.sha256(table.concat(parts, "\0")):sub(1, 32)
 end
 
 return M

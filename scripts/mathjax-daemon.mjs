@@ -14,8 +14,8 @@
 // pipeline a whole document in one batch.
 //
 // Other modes, both used by the plugin and by the test suite:
-//   --in FILE --out FILE.svg [--display] [--color HEX]   one-shot, no daemon
-//   --list-paths                                          resolution probe for :checkhealth
+//   --in FILE --out FILE.svg [--display] [--color HEX] [--width EX]   one-shot, no daemon
+//   --list-paths                                                      resolution probe for :checkhealth
 //
 // NOTE ON SERIALIZATION -- this is load-bearing, do not "simplify" it.
 // MathJax 4 stamps every node with a data-latex attribute holding its raw TeX
@@ -65,7 +65,7 @@ const MACROS = {
 };
 
 function parseArgs(a) {
-  const o = { display: false, color: null, ex: 8, daemon: false, listPaths: false };
+  const o = { display: false, color: null, ex: 8, width: null, daemon: false, listPaths: false };
   for (let i = 2; i < a.length; i++) {
     const k = a[i];
     if (k === "--in") o.input = a[++i];
@@ -73,6 +73,7 @@ function parseArgs(a) {
     else if (k === "--display") o.display = true;
     else if (k === "--color") o.color = a[++i];
     else if (k === "--ex") o.ex = parseFloat(a[++i]);
+    else if (k === "--width") o.width = parseFloat(a[++i]);
     else if (k === "--daemon") o.daemon = true;
     else if (k === "--list-paths") o.listPaths = true;
   }
@@ -129,7 +130,8 @@ async function boot() {
     //
     // Inline breaks off. By default MathJax cuts inline math into one <svg> per
     // place a line could break there, for a browser to wrap -- and render()
-    // keeps node.children[0], so `a+b+c` came back as a lone `a` (#46).
+    // keeps node.children[0], so `a+b+c` came back as a lone `a` (#46). Whether
+    // display math is broken to fit is decided per render; see render().
     svg: { fontCache: "local", linebreaks: { inline: false } },
     startup: { typeset: false },
   });
@@ -216,7 +218,11 @@ function colorize(xml, color) {
 // sans-serif, ...) and \require{..} loads a package mid-render. Both raise
 // MathJax's Retry signal, which only the promise API resolves -- the synchronous
 // call simply throws, so \mathbb{R} never rendered at all.
-async function render(equation, { display = false, color = null, preamble = null, ex = 8 } = {}) {
+//
+// `width` is the room there is, in ex: display math wider than that is broken
+// over several lines to fit (#41). Without one nothing is broken, which is what
+// the HTML export wants -- a browser page has room -- and the picker gets.
+async function render(equation, { display = false, color = null, preamble = null, ex = 8, width = null } = {}) {
   await applyPreamble(preamble);
   // One MathJax session serves every request, and its \label registry would
   // otherwise last as long: the second render of a labelled equation, from `r`
@@ -224,7 +230,12 @@ async function render(equation, { display = false, color = null, preamble = null
   // "Label multiply defined" error box (#15). texReset clears labels and tag
   // numbering only; the \newcommands applyPreamble installed survive it.
   MathJax.texReset();
-  const node = await MathJax.tex2svgPromise(equation, { display, ex: MJ_EX, em: 2 * MJ_EX });
+  // Not an enormous container in place of no width: multline is set as wide as
+  // its container, and came out wider than rsvg-convert will draw.
+  const metrics = { display, ex: MJ_EX, em: 2 * MJ_EX };
+  if (width > 0) metrics.containerWidth = width * MJ_EX;
+  MathJax.startup.output.options.displayOverflow = width > 0 ? "linebreak" : "overflow";
+  const node = await MathJax.tex2svgPromise(equation, metrics);
   const adaptor = MathJax.startup.adaptor;
   const svg = node.children[0];
   const dims = stampPixelSize(adaptor, svg, ex);
@@ -244,7 +255,7 @@ async function main() {
 
   if (o.input) {
     const eq = await fs.readFile(o.input, "utf8");
-    const r = await render(eq, { display: o.display, color: o.color, ex: o.ex });
+    const r = await render(eq, { display: o.display, color: o.color, ex: o.ex, width: o.width });
     if (o.output) await fs.writeFile(o.output, r.svg, "utf8");
     else stdout.write(r.svg);
     return;
@@ -268,6 +279,7 @@ async function main() {
         color: req.color,
         preamble: req.preamble,
         ex: req.ex || 8,
+        width: req.width,
       });
       stdout.write(JSON.stringify({ id: req.id, ok: true, ...r }) + "\n");
     } catch (e) {

@@ -109,6 +109,20 @@ function M.rows(_eq, png, width)
   return rows
 end
 
+--- Whether snacks shrinks this image to fit a window `width` columns wide. It
+--- does that to anything wider, keeping the aspect, so the glyphs come out
+--- smaller than every other entry's. The renderer breaks display math to fit
+--- the index (#41); this is what it could not break, for the index to mark.
+--- Measured the way rows() is: the image is whole cells at 1:1.
+function M.overflows(png, width)
+  local w = png_size(png)
+  if w == 0 then
+    return false
+  end
+  local cell_w = cell_size()
+  return math.ceil(w / cell_w) > width
+end
+
 function M.lines()
   return nil -- image backends occupy blank lines
 end

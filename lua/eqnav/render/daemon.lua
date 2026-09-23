@@ -208,6 +208,7 @@ end
 ---@field color string|nil
 ---@field preamble string|nil
 ---@field ex number|nil
+---@field width number|nil room in ex; display math wider is broken over lines
 
 --- Ask the daemon for one equation's SVG.
 ---@param req eqnav.RenderRequest
@@ -228,6 +229,7 @@ function M.request(req, cb)
     color = req.color,
     preamble = req.preamble,
     ex = req.ex,
+    width = req.width,
   }) .. "\n"
 
   if state.ready and state.proc then

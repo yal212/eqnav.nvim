@@ -477,6 +477,77 @@ describe("view", function()
     assert.are.equal(2, rebuilds)
   end)
 
+  -- #41: display math is rendered to fit the index, so open and refresh must
+  -- say how wide it is.
+  it("renders for the width of the index window", function()
+    stub_images()
+    eqnav.setup({ render = { enabled = true }, display = { backend = "image_nvim" } })
+    local render = require("eqnav.render")
+    local real_render_all = render.render_all
+    local widths = {}
+    render.render_all = function(_, _, opts)
+      table.insert(widths, opts and opts.width or false)
+    end
+    local ok, failure = pcall(function()
+      open()
+      view.refresh()
+    end)
+    render.render_all = real_render_all
+    assert(ok, failure)
+    local width = vim.api.nvim_win_get_width(view.current().win)
+    assert.are.same({ width, width }, widths)
+  end)
+
+  -- The export reuses what the index rendered, and render_all writes each
+  -- equation's key into it. Rendered for any other width, the index's own
+  -- equations were re-keyed under it: every index render still in flight came
+  -- back stale and was dropped, leaving its entry pending for good.
+  it("exports at the width the index rendered for", function()
+    stub_images()
+    eqnav.setup({ render = { enabled = true }, display = { backend = "image_nvim" } })
+    local render = require("eqnav.render")
+    local real_render_all, real_open = render.render_all, vim.ui.open
+    local widths = {}
+    render.render_all = function(_, _, opts)
+      table.insert(widths, opts and opts.width or false)
+    end
+    vim.ui.open = function() end
+    local ok, failure = pcall(function()
+      open()
+      vim.cmd("vertical resize -7")
+      require("eqnav.export.html").export_and_open(vim.fn.tempname())
+    end)
+    render.render_all, vim.ui.open = real_render_all, real_open
+    assert(ok, failure)
+    assert.are.equal(2, #widths)
+    assert.are.equal(widths[1], widths[2])
+  end)
+
+  -- #41: what the renderer could not break to fit the index is shrunk by the
+  -- backend, smaller than its neighbours, and its header says so.
+  it("marks the header of an image shown shrunk to fit", function()
+    stub_images()
+    local png, wide = stub_png(2), stub_png(2)
+    package.loaded["eqnav.display.image_nvim"].overflows = function(p)
+      return p == wide
+    end
+    open(sections(3))
+    local state = view.current()
+    for i, eq in ipairs(state.equations) do
+      view.set_image(i, i == 2 and wide or png, nil, eq.id)
+    end
+    view.flush()
+    local function head(n)
+      local row = state.entries[n].header_row
+      return vim.api.nvim_buf_get_lines(state.buf, row - 1, row, false)[1]
+    end
+
+    assert.is_nil(head(1):find("⟷", 1, true))
+    assert.is_truthy(head(2):find("⟷ L", 1, true), head(2))
+    assert.is_nil(head(3):find("⟷", 1, true))
+    assert.are.equal(vim.fn.strdisplaywidth(head(1)), vim.fn.strdisplaywidth(head(2)))
+  end)
+
   -- `r` on a document nobody edited has nothing to change: every equation keeps
   -- its image until the new render lands, so the text is identical, and
   -- rewriting it anyway tore down every image and lost the view -- including a
