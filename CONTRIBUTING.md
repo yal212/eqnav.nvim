@@ -91,6 +91,22 @@ EQNAV_DEMO_INLINE=1 make demo   # index inline $x$ too
 EQNAV_DEMO_POS=float make demo  # float window instead of a right split
 ```
 
+### Demo assets
+
+The README's sketch, `doc/demo.gif` and `doc/demo-export.png` all show one document,
+`doc/demo.md`. Keep it to constructs the fixture already proves render. If the UI or that
+document changes, regenerate the assets, each from a cold cache:
+
+```
+scripts/record-demo.sh export          # doc/demo-export.png: headless, needs Chrome
+scripts/record-demo.sh record          # prints the steps, then opens the demo to record
+scripts/record-demo.sh gif FILE.mov    # the recording -> doc/demo.gif, needs ffmpeg
+```
+
+The GIF needs a terminal that draws images, so it cannot be made headlessly: `record` opens
+the sandbox in yours, and you run the screen recorder. If an asset shows a rendering bug,
+file it. Don't retouch the picture.
+
 ## Style
 
 Lua is formatted with [StyLua](https://github.com/JohnnyMorganz/StyLua) (`.stylua.toml`):
