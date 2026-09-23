@@ -62,6 +62,12 @@ jobs:
           repository: folke/snacks.nvim
           path: .tests/snacks.nvim
 
+      - name: Checkout image.nvim
+        uses: actions/checkout@v7
+        with:
+          repository: 3rd/image.nvim
+          path: .tests/image.nvim
+
       # Without the latex parser every .tex test takes the regex path and the
       # LaTeX query is never executed (#22). tree-sitter-latex does not ship a
       # generated parser.c, so the CLI is needed to build it.
@@ -70,12 +76,13 @@ jobs:
           npm install -g --no-audit --no-fund tree-sitter-cli@0.27.0
           make parsers
 
-      # snacks and the latex parser are provided above, so a skip here means
-      # something broke.
+      # snacks, image.nvim and the latex parser are provided above, so a skip
+      # here means something broke.
       - name: Run tests
         run: make test
         env:
           EQNAV_REQUIRE_SNACKS: "1"
+          EQNAV_REQUIRE_IMAGE_NVIM: "1"
           EQNAV_REQUIRE_LATEX: "1"
 
   # doc/eqnav.txt is hand-written; a duplicate or malformed tag would otherwise

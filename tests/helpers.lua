@@ -19,4 +19,37 @@ function M.summary(equations)
   end, equations)
 end
 
+--- A plain `w`x`h` px PNG made by the rasterizer eqnav uses, or nil (and the
+--- test marked pending) when there is none.
+---@return string|nil
+function M.make_png(w, h)
+  local raster = require("eqnav.render.raster")
+  if not raster.detect() then
+    pending("no rasterizer")
+    return nil
+  end
+  local tmp = vim.fn.tempname()
+  local fh = assert(io.open(tmp .. ".svg", "w"))
+  fh:write(
+    string.format(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%dpx" height="%dpx">'
+        .. '<rect width="%d" height="%d" fill="#fff"/></svg>',
+      w,
+      h,
+      w,
+      h
+    )
+  )
+  fh:close()
+  local png
+  raster.convert(tmp .. ".svg", tmp .. ".png", function(p)
+    png = p or false
+  end)
+  assert.is_true(vim.wait(10000, function()
+    return png ~= nil
+  end))
+  assert.is_truthy(png)
+  return png
+end
+
 return M

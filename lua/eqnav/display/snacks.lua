@@ -68,22 +68,7 @@ local function png_size(png)
   if ok and dims and dims.width then
     return dims.width, dims.height
   end
-  -- Read the IHDR directly rather than shelling out: PNG puts width and height
-  -- as big-endian u32 at a fixed offset, and this runs once per equation.
-  local fh = io.open(png, "rb")
-  if not fh then
-    return 0, 0
-  end
-  local header = fh:read(24)
-  fh:close()
-  if not header or #header < 24 or header:sub(2, 4) ~= "PNG" then
-    return 0, 0
-  end
-  local function u32(off)
-    local a, b, c, d = header:byte(off, off + 3)
-    return ((a * 256 + b) * 256 + c) * 256 + d
-  end
-  return u32(17), u32(21)
+  return require("eqnav.display.png").size(png)
 end
 
 --- Exact rather than an estimate: the renderer pads each image to whole cells

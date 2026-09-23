@@ -103,7 +103,7 @@ local function check_display()
   else
     warn("falling back to the text backend: equations show as LaTeX source, not images", {
       "Install folke/snacks.nvim with image.enabled = true (recommended)",
-      "or 3rd/image.nvim",
+      "or 3rd/image.nvim, with require('image').setup() called",
       "Either way, :EqnavExport still gives you a fully rendered HTML page",
     })
   end
