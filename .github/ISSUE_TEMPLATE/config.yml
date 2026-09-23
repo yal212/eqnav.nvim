@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup problem? Run :checkhealth eqnav first
+    url: https://github.com/yal212/eqnav.nvim#requirements
+    about: >-
+      Most "nothing renders" reports turn out to be a missing rasterizer, image backend or
+      terminal graphics support. :checkhealth eqnav names the missing piece.

@@ -1,0 +1,31 @@
+name: Feature request
+description: Something the index could do that it does not.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please start from the problem, not the solution. It is often solvable in a way
+        nobody has thought of yet.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What were you doing?
+      description: The document, the task, and the point where you got stuck.
+    validations:
+      required: true
+
+  - type: textarea
+    id: gap
+    attributes:
+      label: Why didn't the index help?
+      description: What you tried in eqnav, and where it fell short.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: A sketch of the behaviour you want. Optional.
