@@ -7,6 +7,9 @@ local M = {}
 ---@field available fun(): boolean
 ---@field rows fun(eq: eqnav.Equation, png: string|nil, width: integer): integer
 ---@field lines fun(eq: eqnav.Equation, png: string|nil, width: integer): string[]|nil
+--- Show `png` at `row`, replacing whatever that row showed. The same png at the
+--- same row again is a no-op, which is what lets an unchanged index re-render
+--- without its images being torn down and redrawn.
 ---@field place fun(bufnr: integer, row: integer, eq: eqnav.Equation, png: string): any
 ---@field clear fun(bufnr: integer)
 ---@field images boolean whether this backend actually shows pixels

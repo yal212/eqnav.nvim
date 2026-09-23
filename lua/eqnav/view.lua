@@ -12,6 +12,8 @@ M.ns = vim.api.nvim_create_namespace("eqnav.view")
 ---@field header_row integer 1-indexed row of the entry's header line
 ---@field body_row integer 1-indexed row where the image/text starts
 ---@field rows integer body height in lines
+---@field width integer window width the body was laid out for
+---@field sized_png string|nil the png `rows` was measured from; set_image changes `png` first
 ---@field png string|nil
 ---@field err string|nil
 
@@ -22,6 +24,7 @@ M.ns = vim.api.nvim_create_namespace("eqnav.view")
 ---@field win integer|nil
 ---@field equations eqnav.Equation[]
 ---@field entries eqnav.Entry[]
+---@field anchor? eqnav.Anchor where render() is keeping the cursor
 local current = nil
 
 function M.current()
@@ -85,6 +88,43 @@ local function header(eq, width)
   return line, spans
 end
 
+--- An equation's identity across a refresh: its source. Not `eq.id`, which
+--- render_all re-hashes with the colour and display geometry, so a fresh scan's
+--- id never matches the one the index last rendered under.
+---@param eq eqnav.Equation
+---@return string
+local function source_key(eq)
+  return (eq.display and "D" or "I") .. eq.tex
+end
+
+---@class eqnav.Anchor
+---@field key string source_key() of the equation the cursor is on
+---@field n integer its ordinal, for when that equation is gone
+---@field offset integer cursor row minus the entry's header row
+---@field dist integer cursor row minus the window's top row
+---@field row integer the cursor row this was measured at or last restored to
+
+--- Where the index cursor is: the equation it is on, its offset from that
+--- entry's header, and its distance from the top of the window. Screen rows and
+--- buffer rows agree here, since the index does not wrap.
+---@return eqnav.Anchor|nil
+local function measure_anchor()
+  local win = current.win
+  local n = M.cursor_entry()
+  local entry = n and current.entries[n]
+  if not entry then
+    return nil
+  end
+  local row = vim.api.nvim_win_get_cursor(win)[1]
+  return {
+    key = source_key(entry.eq),
+    n = n,
+    offset = row - entry.header_row,
+    dist = math.min(row - vim.fn.line("w0", win), vim.api.nvim_win_get_height(win) - 1),
+    row = row,
+  }
+end
+
 --- Rebuild the index buffer from the current equation list.
 function M.render()
   if not current or not vim.api.nvim_buf_is_valid(current.buf) then
@@ -95,8 +135,6 @@ function M.render()
       and vim.api.nvim_win_is_valid(current.win)
       and vim.api.nvim_win_get_width(current.win)
     or config.options.window.width
-
-  backend.clear(current.buf)
 
   local lines, spans, entries = {}, {}, {}
   local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current.source_buf), ":t")
@@ -133,7 +171,11 @@ function M.render()
     end
 
     if body == nil then
-      local rows = backend.rows(eq, png, width)
+      -- An image already laid out at this width keeps its height: `r` deletes
+      -- the file to re-render it (cache.invalidate), and measuring a missing
+      -- file gives one row, collapsing the entry until the new one lands.
+      local rows = prev and prev.sized_png == png and prev.width == width and prev.rows
+        or backend.rows(eq, png, width)
       body = {}
       for _ = 1, rows do
         table.insert(body, "")
@@ -156,6 +198,8 @@ function M.render()
       header_row = header_row,
       body_row = body_row,
       rows = #body,
+      width = width,
+      sized_png = png,
       png = png,
       err = err,
     }
@@ -165,6 +209,42 @@ function M.render()
     table.insert(lines, "  no equations found in this buffer")
   end
 
+  -- Nothing to rebuild when the text comes out the same, as it does for every
+  -- render a refresh of an unedited document triggers: each equation keeps its
+  -- image until the new one lands, at the same height. Rewriting the buffer
+  -- anyway tears down every image, and the view goes with them -- a window
+  -- starting partway through an image cannot be put back, because the terminal
+  -- has not drawn that image again yet. place() leaves an image already at its
+  -- row alone, so only one that actually changed is swapped.
+  if vim.deep_equal(lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false)) then
+    current.entries = entries
+    if backend.images then
+      for _, entry in ipairs(entries) do
+        if entry.png then
+          backend.place(current.buf, entry.body_row, entry.eq, entry.png)
+        end
+      end
+    end
+    return
+  end
+
+  -- Rebuilding moves every entry below one whose body changed height, but the
+  -- cursor keeps its line number -- so each image landing after a refresh walked
+  -- it up onto an earlier entry (#44). The anchor says where it should be; see
+  -- measure_anchor(). One this function placed is reused as long as the cursor
+  -- has not moved off it, rather than measured again: a layout too short to
+  -- hold the requested position clamps it, and measuring the clamped result
+  -- would make that clamp stick after the images have made room again.
+  local win = current.win
+  local anchor = nil
+  if win and vim.api.nvim_win_is_valid(win) then
+    anchor = current.anchor
+    if not (anchor and vim.api.nvim_win_get_cursor(win)[1] == anchor.row) then
+      anchor = measure_anchor()
+    end
+  end
+
+  backend.clear(current.buf)
   vim.bo[current.buf].modifiable = true
   vim.api.nvim_buf_set_lines(current.buf, 0, -1, false, lines)
   vim.bo[current.buf].modifiable = false
@@ -181,6 +261,40 @@ function M.render()
   end
 
   current.entries = entries
+
+  -- By source first: an equation added or removed above shifts every ordinal
+  -- after it. Identical equations share a source, so take the nearest of those.
+  local new = nil
+  if anchor then
+    for _, entry in ipairs(entries) do
+      if
+        source_key(entry.eq) == anchor.key
+        and (not new or math.abs(entry.eq.index - anchor.n) < math.abs(new.eq.index - anchor.n))
+      then
+        new = entry
+      end
+    end
+    new = new or entries[math.min(anchor.n, #entries)]
+  end
+  if new then
+    -- The separator after the body belongs to the entry too, hence `rows + 1`.
+    local row = new.header_row + math.min(anchor.offset, new.rows + 1)
+    vim.api.nvim_win_set_cursor(win, { row, 0 })
+    vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = math.max(1, row - anchor.dist) })
+    end)
+    -- The requested offset and distance, not the ones this layout achieved.
+    current.anchor = {
+      key = source_key(new.eq),
+      n = new.eq.index,
+      offset = anchor.offset,
+      dist = anchor.dist,
+      row = row,
+    }
+    M.highlight_current()
+  else
+    current.anchor = nil
+  end
 
   -- Place images only after the lines exist, or the placement has nothing to
   -- attach to.
@@ -591,13 +705,35 @@ function M.refresh(force)
   if not current then
     return
   end
-  local keep = M.cursor_entry()
+  -- Measured against the old entries, before they are replaced. Where equations
+  -- above the cursor were edited, the placeholders render() draws for them are
+  -- shorter than their images, so the view is only fully back once those land.
+  local keep = M.is_open() and measure_anchor() or nil
+  -- Each equation keeps its image, matched by source_key() rather than its
+  -- ordinal, until the new render replaces it: an unedited index then renders
+  -- the same text and nothing on screen moves. An edited equation finds no
+  -- match and shows as pending.
+  local old = {}
+  for _, entry in pairs(current.entries or {}) do
+    old[source_key(entry.eq)] = entry
+  end
   current.equations = scan.scan(current.source_buf)
   current.entries = {}
-  M.render()
-  if keep then
-    M.goto_entry(math.min(keep, #current.equations))
+  for _, eq in ipairs(current.equations) do
+    local prev = old[source_key(eq)]
+    if prev then
+      current.entries[eq.index] = {
+        eq = eq,
+        png = prev.png,
+        err = prev.err,
+        rows = prev.rows,
+        width = prev.width,
+        sized_png = prev.sized_png,
+      }
+    end
   end
+  current.anchor = keep
+  M.render()
   if config.options.render.enabled and display.get().images then
     require("eqnav.render").render_all(current.equations, function(index, png, err, id)
       if current then

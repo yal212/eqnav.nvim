@@ -17,7 +17,8 @@ function M.available()
   return image ~= nil and type(image.from_file) == "function"
 end
 
-local images = {} ---@type table<integer, table[]>
+--- Per buffer, the image at each row and the file it shows.
+local images = {} ---@type table<integer, table<integer, { png: string, img: table }>>
 
 function M.rows(_eq, png, _width)
   local image = api()
@@ -47,6 +48,18 @@ function M.place(bufnr, row, _eq, png)
   if not image or not png then
     return nil
   end
+  local rows = images[bufnr] or {}
+  images[bufnr] = rows
+  local existing = rows[row]
+  if existing and existing.png == png then
+    return existing.img
+  end
+  if existing then
+    pcall(function()
+      existing.img:clear()
+    end)
+    rows[row] = nil
+  end
   local ok, img = pcall(image.from_file, png, {
     buffer = bufnr,
     with_virtual_padding = true,
@@ -59,15 +72,14 @@ function M.place(bufnr, row, _eq, png)
   pcall(function()
     img:render()
   end)
-  images[bufnr] = images[bufnr] or {}
-  table.insert(images[bufnr], img)
+  rows[row] = { png = png, img = img }
   return img
 end
 
 function M.clear(bufnr)
-  for _, img in ipairs(images[bufnr] or {}) do
+  for _, entry in pairs(images[bufnr] or {}) do
     pcall(function()
-      img:clear()
+      entry.img:clear()
     end)
   end
   images[bufnr] = nil

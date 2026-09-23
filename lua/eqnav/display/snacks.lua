@@ -113,12 +113,25 @@ function M.lines()
   return nil -- image backends occupy blank lines
 end
 
-local placements = {} ---@type table<integer, table[]>
+--- Per buffer, the placement at each row and the file it shows.
+local placements = {} ---@type table<integer, table<integer, { png: string, placement: table }>>
 
 function M.place(bufnr, row, _eq, png)
   local s = snacks()
   if not s or not png then
     return nil
+  end
+  local rows = placements[bufnr] or {}
+  placements[bufnr] = rows
+  local existing = rows[row]
+  if existing and existing.png == png then
+    return existing.placement
+  end
+  if existing then
+    pcall(function()
+      existing.placement:close()
+    end)
+    rows[row] = nil
   end
   local ok, placement = pcall(function()
     return s.image.placement.new(bufnr, png, {
@@ -131,15 +144,14 @@ function M.place(bufnr, row, _eq, png)
   if not ok then
     return nil
   end
-  placements[bufnr] = placements[bufnr] or {}
-  table.insert(placements[bufnr], placement)
+  rows[row] = { png = png, placement = placement }
   return placement
 end
 
 function M.clear(bufnr)
-  for _, p in ipairs(placements[bufnr] or {}) do
+  for _, p in pairs(placements[bufnr] or {}) do
     pcall(function()
-      p:close()
+      p.placement:close()
     end)
   end
   placements[bufnr] = nil

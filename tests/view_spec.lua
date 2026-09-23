@@ -55,6 +55,48 @@ local function open(text)
   return bufnr
 end
 
+--- Select a stub image backend, counting its place() and clear() calls into
+--- `calls`. Its images are as many rows tall as stub_png() says, against a
+--- one-row placeholder.
+---@param calls? { place: integer, clear: integer }
+---@param rows integer
+---@return string path of a stub png that many rows tall
+local function stub_png(rows)
+  local path = vim.fn.tempname() .. ".png"
+  vim.fn.writefile({ tostring(rows) }, path)
+  return path
+end
+
+local function stub_images(calls)
+  calls = calls or { place = 0, clear = 0 }
+  -- Stands in for a real backend name, which is all config will accept.
+  package.loaded["eqnav.display.image_nvim"] = {
+    name = "stub_image",
+    images = true,
+    available = function()
+      return true
+    end,
+    -- Read from the file, as the real backends measure it: a stub png holds its
+    -- height in rows, and a missing one is a single row.
+    rows = function(_, png)
+      local ok, content = pcall(vim.fn.readfile, png or "")
+      return ok and tonumber(content[1]) or 1
+    end,
+    lines = function()
+      return nil
+    end,
+    place = function()
+      calls.place = calls.place + 1
+    end,
+    clear = function()
+      calls.clear = calls.clear + 1
+    end,
+  }
+  eqnav.setup({ render = { enabled = false }, display = { backend = "image_nvim" } })
+  require("eqnav.display").reset()
+  return calls
+end
+
 describe("view", function()
   before_each(function()
     eqnav.setup({ render = { enabled = false } })
@@ -385,6 +427,112 @@ describe("view", function()
       "/nonexistent/gamma.png",
       view.current().entries[2].png,
       "a result that still matches must land"
+    )
+  end)
+
+  -- `r` on a document nobody edited has nothing to change: every equation keeps
+  -- its image until the new render lands, so the text is identical, and
+  -- rewriting it anyway tore down every image and lost the view -- including a
+  -- window starting partway through an image, which only exists once the
+  -- terminal has drawn it and so cannot be put back (#44).
+  it("leaves an unchanged index untouched while a refresh re-renders it", function()
+    local calls = stub_images()
+    local png = stub_png(4)
+    open(sections(6))
+    local state = view.current()
+    for i, eq in ipairs(state.equations) do
+      -- What render_all does: the id it renders under is not the one a scan
+      -- gives, since it hashes in the colour and the display geometry.
+      eq.id = "rendered:" .. eq.id
+      view.set_image(i, png, nil, eq.id)
+    end
+    local win = state.win
+    local header = state.entries[5].header_row
+    vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = header - vim.api.nvim_win_get_height(win) + 1, lnum = header })
+    end)
+    local tick = vim.api.nvim_buf_get_changedtick(state.buf)
+    local lines = vim.api.nvim_buf_get_lines(state.buf, 0, -1, false)
+    local function view_state()
+      return vim.api.nvim_win_call(win, vim.fn.winsaveview)
+    end
+    local before = view_state()
+    calls.place, calls.clear = 0, 0
+
+    -- `r` deletes each cached file to force its re-render (cache.invalidate).
+    vim.fn.delete(png)
+    view.refresh()
+    state = view.current()
+    for _, eq in ipairs(state.equations) do
+      eq.id = "rendered:" .. eq.id
+    end
+    vim.fn.writefile({ "4" }, png)
+    for _, eq in ipairs(state.equations) do
+      view.set_image(eq.index, png, nil, eq.id)
+    end
+
+    assert.are.same(lines, vim.api.nvim_buf_get_lines(state.buf, 0, -1, false))
+    assert.are.equal(tick, vim.api.nvim_buf_get_changedtick(state.buf), "the index was rewritten")
+    assert.are.equal(0, calls.clear, "every image was torn down")
+    assert.are.same(before, view_state())
+
+    -- A new image the same height swaps that one image, and nothing else.
+    local other = stub_png(4)
+    view.set_image(2, other, nil, state.equations[2].id)
+    assert.are.equal(other, view.current().entries[2].png)
+    assert.are.equal(tick, vim.api.nvim_buf_get_changedtick(state.buf))
+    assert.are.equal(0, calls.clear)
+    assert.are.same(before, view_state())
+
+    -- One of another height is laid out again.
+    view.set_image(2, stub_png(6), nil, state.equations[2].id)
+    assert.are.equal(6, view.current().entries[2].rows)
+    assert.are_not.equal(tick, vim.api.nvim_buf_get_changedtick(state.buf))
+  end)
+
+  -- An equation added above the cursor has no image yet: it shows as a one-row
+  -- placeholder and grows as its render lands, and every entry after it moves
+  -- down by a whole section. The cursor's line number used to stay put through
+  -- that, leaving it on another equation, and the view with it (#44).
+  it("keeps the cursor and the view on their equation when one is added above", function()
+    stub_images()
+    local png = stub_png(4)
+    local source = open(sections(6))
+    local state = view.current()
+    for i, eq in ipairs(state.equations) do
+      eq.id = "rendered:" .. eq.id -- as render_all does; see the spec above
+      view.set_image(i, png, nil, eq.id)
+    end
+    -- Entry 5's header on the window's last row: the collapsed layout cannot
+    -- hold it there, so the view has to be put back once the images land.
+    local win = state.win
+    local header = state.entries[5].header_row
+    vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = header - vim.api.nvim_win_get_height(win) + 1, lnum = header })
+    end)
+    assert.are.equal(5, view.cursor_entry())
+    local tex = state.entries[5].eq.tex
+    local function screen_row()
+      return vim.api.nvim_win_get_cursor(win)[1] - vim.fn.line("w0", win) + 1
+    end
+    local screen = screen_row()
+
+    vim.api.nvim_buf_set_lines(source, 0, 0, false, { "## Added", "", "$$y = 0$$", "" })
+    view.refresh()
+    state = view.current()
+    assert.is_nil(state.entries[1].png, "the added equation has an image it never rendered")
+    for _, eq in ipairs(state.equations) do
+      eq.id = "rendered:" .. eq.id
+      view.set_image(eq.index, png, nil, eq.id)
+    end
+
+    assert.are.equal(6, view.cursor_entry(), "the cursor left its equation")
+    assert.are.equal(tex, state.entries[6].eq.tex)
+    assert.are.equal(state.entries[6].header_row, vim.api.nvim_win_get_cursor(win)[1])
+    assert.are.equal(
+      screen,
+      screen_row(),
+      ("the entry moved from screen row %d to %d"):format(screen, screen_row())
     )
   end)
 
