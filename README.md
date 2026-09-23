@@ -45,9 +45,11 @@ index and the jump-back. Rendering is something it consumes, not something it in
 | **An image backend** | [snacks.nvim][snacks] with `image.enabled`, or [image.nvim][imagenvim] |
 | **A graphics terminal** | Kitty, Ghostty, WezTerm, or iTerm2 (see [tmux](#tmux) below) |
 
-Only Neovim and Node are hard requirements. Without a rasterizer or image backend eqnav
-falls back to showing LaTeX source in the index, and `:EqnavExport` still produces a
-fully rendered HTML page. Run `:checkhealth eqnav` — it names whichever piece is missing.
+Neovim and Node are required: Node is what renders, so without it there is no rendered
+math anywhere, in the index or in `:EqnavExport`. The other three degrade gracefully.
+Without a rasterizer, image backend or graphics terminal, the index shows LaTeX source,
+and `:EqnavExport` still produces a fully rendered HTML page. Run `:checkhealth eqnav`
+to see which piece is missing.
 
 ## Install
 

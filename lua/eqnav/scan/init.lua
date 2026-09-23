@@ -24,7 +24,7 @@ function M.language_for(ft)
 end
 
 ---@class eqnav.Equation
----@field id string content hash; the render cache key
+---@field id string content hash; render_all re-keys it with the resolved colour and geometry
 ---@field tex string math source, delimiters stripped
 ---@field raw string source including delimiters
 ---@field display boolean display math vs inline

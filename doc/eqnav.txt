@@ -105,7 +105,8 @@ so listing only `tex` misses some of them.
 5. MAPPINGS                                                    *eqnav-mappings*
 
 These are buffer-local to the index and do not affect your document. All are
-configurable through `keymaps` (see |eqnav-configuration|).
+configurable through `keymaps`, and any can be turned off (see
+|eqnav-keymaps|).
 
     j          next equation
     k          previous equation
@@ -181,11 +182,19 @@ render.ex ~
 
                                                               *eqnav-color*
 render.color ~
-    Hex colour for rendered glyphs, without a leading "#". When nil, eqnav
+    Hex colour for rendered glyphs, as "rrggbb" or "#rrggbb". When nil, eqnav
     follows the foreground of the |hl-Normal| highlight and re-renders when
     the colorscheme changes. Leaving it nil is strongly recommended: a fixed
     colour goes unreadable the moment the background changes.
 
+                                                            *eqnav-keymaps*
+keymaps ~
+    The index buffer's mappings (see |eqnav-mappings|). Set one to "" to
+    leave that key unmapped, for example when a default collides with a
+    habit: >lua
+
+        require("eqnav").setup({ keymaps = { yank = "" } })
+<
                                                              *eqnav-follow*
 sync.follow ~
     Also move the source window's cursor to match the index cursor. Off by
@@ -223,7 +232,7 @@ require("eqnav").equations({bufnr})
                         anything. Each entry is an `eqnav.Equation`: >lua
 
                             {
-                              id,        -- content hash / cache key
+                              id,        -- content hash (see below)
                               tex,       -- math source, delimiters stripped
                               raw,       -- source including delimiters
                               display,   -- boolean
@@ -235,6 +244,12 @@ require("eqnav").equations({bufnr})
                               mark,      -- extmark tracking live position
                             }
 <
+                        `id` hashes the math, display mode, `render.color` and
+                        `render.ex`. It identifies an equation, but it is not
+                        the render cache key: rendering re-hashes it with the
+                        resolved foreground colour and the display's geometry,
+                        so do not use it to look up a cached image.
+
                                                              *eqnav.pick()*
 require("eqnav").pick({opts})
                         Open the telescope picker behind |:EqnavPick|. {opts}
