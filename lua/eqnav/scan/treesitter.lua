@@ -29,6 +29,22 @@ local function query_for(lang)
   return nil
 end
 
+--- Does a language higher up the injection tree already have an eqnav query?
+--- Then its captures are the math and this tree is their contents: markdown's
+--- bundled injections hand every latex_block to the `latex` parser, and
+--- querying that too listed each markdown equation twice.
+---@param ltree vim.treesitter.LanguageTree
+local function under_queried_parent(ltree)
+  local parent = ltree:parent()
+  while parent do
+    if query_for(parent:lang()) then
+      return true
+    end
+    parent = parent:parent()
+  end
+  return false
+end
+
 --- Scan a buffer for math nodes using treesitter.
 ---@param bufnr integer
 ---@return eqnav.Equation[]|nil equations, string|nil err
@@ -50,6 +66,9 @@ function M.scan(bufnr)
       return
     end
     any_query = true
+    if under_queried_parent(ltree) then
+      return
+    end
 
     for id, node in query:iter_captures(tree:root(), bufnr) do
       if query.captures[id] == "eqnav.equation" then
