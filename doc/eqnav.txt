@@ -62,6 +62,13 @@ plugin loads; calling setup() is only needed to change defaults. >lua
 
     require("eqnav").setup({})
 <
+If your plugin manager loads eqnav by filetype (lazy.nvim's `ft`), that list
+must include every entry in `filetypes`. The two do different jobs: `ft`
+decides whether the plugin loads at all, `filetypes` decides which buffers it
+scans. A filetype missing from `ft` has no |:Eqnav|, and nothing reports why.
+Neovim detects a `.tex` file as `tex` or `plaintex` depending on its content,
+so listing only `tex` misses some of them.
+
 ==============================================================================
 4. COMMANDS                                                    *eqnav-commands*
 
