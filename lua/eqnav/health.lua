@@ -35,7 +35,17 @@ local function check_renderer()
     return
   end
   local v = vim.system({ node, "--version" }, { text = true }):wait()
-  ok("node " .. vim.trim(v.stdout or "?"))
+  local version = vim.trim(v.stdout or "?")
+  -- An older node starts, and then the daemon fails at runtime, so printing the
+  -- version is not enough: a report that only prints it looks healthy.
+  local major = tonumber(version:match("^v(%d+)"))
+  if major and major < 18 then
+    err(("node %s is too old; eqnav needs Node.js 18 or newer"):format(version), {
+      "Install Node.js 18 or newer, or set render.node to its path",
+    })
+    return
+  end
+  ok("node " .. version)
 
   local script = daemon.script()
   if vim.fn.filereadable(script) ~= 1 then
