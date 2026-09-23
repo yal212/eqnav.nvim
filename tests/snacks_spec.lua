@@ -60,6 +60,15 @@ describe("snacks backend", function()
     assert.is_true(size.cell_height > 0, "cell_height must be positive or rows() divides by zero")
   end)
 
+  -- The renderer pads every image to this cell size and stamps a DPI from this
+  -- scale, so snacks' own sizing lands on exactly the rows rows() reserved.
+  it("reports the geometry the renderer pads images to", function()
+    local g = backend.geometry()
+    assert.is_table(g)
+    assert.is_true(g.cell_width > 0 and g.cell_height > 0, vim.inspect(g))
+    assert.is_true(g.scale >= 1, vim.inspect(g))
+  end)
+
   it("has its placement options accepted by snacks", function()
     if skip_unless_snacks() then
       return
@@ -95,6 +104,54 @@ describe("snacks backend", function()
     local rows = backend.rows({ tex = "x", display = true, index = 1 }, png, 60)
     assert.is_number(rows)
     assert.is_true(rows >= 1 and rows < 100, "implausible row count: " .. tostring(rows))
+  end)
+
+  -- snacks shrinks an image wider than the window to fit it, keeping its aspect,
+  -- so it draws in fewer rows than its height alone says. Reserving by height
+  -- left a gap under every over-wide equation.
+  it("reserves the rows snacks draws an over-wide image in", function()
+    if skip_unless_snacks() then
+      return
+    end
+    local raster = require("eqnav.render.raster")
+    if not raster.detect() then
+      pending("no rasterizer")
+      return
+    end
+    local g = backend.geometry()
+    local w, h = math.ceil(40 * g.cell_width), math.ceil(4 * g.cell_height)
+    local tmp = vim.fn.tempname()
+    local fh = assert(io.open(tmp .. ".svg", "w"))
+    fh:write(
+      string.format(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="%dpx" height="%dpx">'
+          .. '<rect width="%d" height="%d" fill="#fff"/></svg>',
+        w,
+        h,
+        w,
+        h
+      )
+    )
+    fh:close()
+    local png
+    raster.convert(tmp .. ".svg", tmp .. ".png", function(p)
+      png = p or false
+    end)
+    assert.is_true(vim.wait(10000, function()
+      return png ~= nil
+    end))
+    assert.is_truthy(png)
+
+    local tall = math.ceil(h / g.cell_height)
+    local wide = math.ceil(w / g.cell_width)
+    assert.are.equal(tall, backend.rows({ tex = "x" }, png, wide + 10))
+    -- Half the width it needs: snacks halves it, and so its height.
+    local half = backend.rows({ tex = "x" }, png, math.floor(wide / 2))
+    assert.is_true(half < tall, "rows ignored the window width: " .. half)
+    assert.are.equal(
+      snacks.image.util.fit(png, { width = math.floor(wide / 2), height = tall }).height,
+      half
+    )
   end)
 
   it("reads PNG dimensions straight from the IHDR", function()

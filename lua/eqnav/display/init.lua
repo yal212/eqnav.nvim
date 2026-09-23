@@ -10,6 +10,7 @@ local M = {}
 ---@field place fun(bufnr: integer, row: integer, eq: eqnav.Equation, png: string): any
 ---@field clear fun(bufnr: integer)
 ---@field images boolean whether this backend actually shows pixels
+---@field geometry? fun(): eqnav.Geometry|nil cell size and density to render for
 
 -- Order matters: snacks needs no luarock and handles tmux passthrough itself,
 -- so it is tried first. `text` always succeeds, which is what keeps the whole

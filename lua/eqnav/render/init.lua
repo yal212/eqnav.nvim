@@ -58,12 +58,17 @@ function M.render_all(equations, cb, opts)
   local color = display.foreground()
   local ex = config.options.render.ex
   local util = require("eqnav.scan.util")
+  -- Where the backend can say what the display measures, render for it:
+  -- `ex` stays CSS px per ex, drawn at the display's density and padded to
+  -- whole cells so it is shown 1:1 (#6, #17). Without it, as before.
+  local backend = display.get()
+  local geom = backend.images and backend.geometry and backend.geometry() or nil
 
   local todo = {}
   for _, eq in ipairs(equations) do
     -- The colour is decided here, not at scan time, so a colorscheme change
     -- produces a different id and therefore a fresh render.
-    eq.id = util.hash(eq.tex, eq.display, color, ex)
+    eq.id = util.hash(eq.tex, eq.display, color, ex, geom)
     if opts.force then
       cache.invalidate(eq.id)
     end
@@ -121,13 +126,26 @@ function M.render_all(equations, cb, opts)
         fh:write(res.svg)
         fh:close()
 
+        local fit = nil
+        if geom then
+          fit = { zoom = geom.scale, ppu = math.ceil(96 * geom.scale) }
+          -- The daemon reports the equation's size in ex; the SVG it wrote is
+          -- that times `ex` in CSS px, and the PNG that times the scale. A \tag
+          -- sizes the SVG as a percentage, which comes back as JSON null, and
+          -- vim.NIL is truthy: hence type(), and no padding for that one.
+          if type(res.width) == "number" and type(res.height) == "number" then
+            local px = ex * geom.scale
+            fit.box = raster.box(res.width * px, res.height * px, geom)
+          end
+        end
+
         raster.convert(svg_path, png_path, function(png, err)
           active = active - 1
           vim.schedule(function()
             cb(eq.index, png, err, eq.id)
             pump()
           end)
-        end)
+        end, fit)
       end)
     end
   end

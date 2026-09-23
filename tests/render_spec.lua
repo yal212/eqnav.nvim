@@ -361,3 +361,242 @@ describe("render pipeline", function()
     render.daemon.reset()
   end)
 end)
+
+--- Every chunk of a PNG file, in order, as { type, data, crc_ok }.
+---@param path string
+local function png_chunks(path)
+  local fh = assert(io.open(path, "rb"))
+  local bytes = fh:read("*a")
+  fh:close()
+  assert.are.equal("\137PNG\r\n\26\n", bytes:sub(1, 8), "not a PNG")
+  local function u32(off)
+    local a, b, c, d = bytes:byte(off, off + 3)
+    return ((a * 256 + b) * 256 + c) * 256 + d
+  end
+  local out, pos = {}, 9
+  while pos <= #bytes do
+    local len = u32(pos)
+    local kind = bytes:sub(pos + 4, pos + 7)
+    local data = bytes:sub(pos + 8, pos + 7 + len)
+    local crc = u32(pos + 8 + len)
+    local ok = require("eqnav.render.raster").crc32(kind .. data) == crc
+    table.insert(out, { type = kind, data = data, crc_ok = ok })
+    pos = pos + 12 + len
+  end
+  return out
+end
+
+---@param data string
+local function phys(data)
+  local function u32(off)
+    local a, b, c, d = data:byte(off, off + 3)
+    return ((a * 256 + b) * 256 + c) * 256 + d
+  end
+  return u32(1), u32(5), data:byte(9)
+end
+
+---@param path string
+---@return integer width, integer height
+local function png_dims(path)
+  local ihdr = png_chunks(path)[1]
+  assert.are.equal("IHDR", ihdr.type)
+  local w, h = phys(ihdr.data) -- IHDR opens with the same two u32s
+  return w, h
+end
+
+-- #17 and #6: the terminal shows an image in a box of whole cells, and kitty
+-- stretches the image to fill it. An image that is not already a whole number
+-- of cells is stretched by its own factor, and snacks' DPI scaling on top made
+-- the box disagree with the rows eqnav reserved. These pin the cure: render at
+-- the display's density, pad to whole cells, and stamp a DPI snacks reads as 1:1.
+describe("cell-aligned rasterization", function()
+  local raster = require("eqnav.render.raster")
+  local geom = { cell_width = 20, cell_height = 45, scale = 2.5 }
+
+  before_each(function()
+    require("eqnav").setup({ render = { color = "e0def4", ex = 9 } })
+  end)
+
+  it("pads to whole cells without growing an exact fit", function()
+    assert.are.same({ width = 40, height = 90, top = 0, left = 0 }, raster.box(40, 90, geom))
+  end)
+
+  it("rounds up to the next cell and centres vertically", function()
+    local b = raster.box(301, 47, geom)
+    assert.are.same({ width = 320, height = 90, top = 21, left = 0 }, b)
+  end)
+
+  it("reserves at least one cell for an empty equation", function()
+    local b = raster.box(0.5, 0.5, geom)
+    assert.are.equal(20, b.width)
+    assert.are.equal(45, b.height)
+  end)
+
+  it("never crops the image when the cell size is fractional", function()
+    -- 44.6px rasterizes to 45 rows of pixels, but floor(1 * 44.8) is 44.
+    local b = raster.box(10, 44.6, { cell_width = 9.5, cell_height = 44.8, scale = 1 })
+    assert.is_true(b.height >= 45, "box cuts off the last pixel row: " .. b.height)
+    -- and stays a whole number of cells, rounded down, so snacks' ceil() lands
+    -- on the same count
+    local rows = math.ceil(b.height / 44.8)
+    assert.is_true(b.height > (rows - 1) * 44.8 and b.height <= rows * 44.8)
+  end)
+
+  it("stamps a unit-less pHYs that replaces any previous one", function()
+    if not has_raster then
+      pending("no rasterizer")
+      return
+    end
+    local tmp = vim.fn.tempname()
+    local svg, png = tmp .. ".svg", tmp .. ".png"
+    local fh = assert(io.open(svg, "w"))
+    fh:write(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="30px" height="10px">'
+        .. '<rect width="30" height="10" fill="#fff"/></svg>'
+    )
+    fh:close()
+    local done, err
+    raster.convert(svg, png, function(p, e)
+      done, err = p, e
+    end, { box = raster.box(30, 10, geom), ppu = 240 })
+    assert.is_true(wait(function()
+      return done ~= nil or err ~= nil
+    end))
+    assert.is_nil(err)
+
+    assert.is_nil(raster.stamp_dpi(png, 241))
+    local found = {}
+    for _, c in ipairs(png_chunks(png)) do
+      assert.is_true(c.crc_ok, c.type .. " has a bad CRC")
+      if c.type == "pHYs" then
+        table.insert(found, c)
+      end
+    end
+    assert.are.equal(1, #found, "expected exactly one pHYs chunk")
+    local x, y, unit = phys(found[1].data)
+    assert.are.same({ 241, 241, 0 }, { x, y, unit })
+    assert.are.same({ 40, 45 }, { png_dims(png) })
+
+    -- What snacks actually reads. CI has no ImageMagick; this is the local check
+    -- that a unit-0 pHYs comes back verbatim rather than as pixels per cm.
+    if vim.fn.executable("magick") == 1 then
+      local res = vim
+        .system({ "magick", "identify", "-format", "%xx%y", png }, { text = true })
+        :wait()
+      assert.are.equal("241x241", vim.trim(res.stdout))
+    end
+  end)
+
+  it("keys the cache on the display geometry", function()
+    local util = require("eqnav.scan.util")
+    local a = util.hash("x", true, "e0def4", 9, geom)
+    local b = util.hash("x", true, "e0def4", 9, { cell_width = 20, cell_height = 44, scale = 2.5 })
+    assert.are_not.equal(a, b)
+    assert.are_not.equal(a, util.hash("x", true, "e0def4", 9))
+  end)
+
+  -- A \tag makes MathJax size the SVG as width="100%", so the daemon reports no
+  -- width, which arrives as vim.NIL: truthy, and arithmetic on it throws inside
+  -- the daemon callback, so the entry waited on its render forever.
+  it("finishes an equation the daemon reports no size for", function()
+    if not (has_node and has_raster) then
+      pending("renderer toolchain unavailable")
+      return
+    end
+    local display = require("eqnav.display")
+    local real_get = display.get
+    display.get = function()
+      return {
+        name = "fake",
+        images = true,
+        geometry = function()
+          return geom
+        end,
+      }
+    end
+    local ok, failure = pcall(function()
+      local eqs = scan.scan(helpers.buf("$$x = y \\tag{1}$$\n", "markdown"))
+      local got
+      render.render_all(eqs, function(_, png, err)
+        got = { png = png, err = err }
+      end, { force = true })
+      assert.is_true(
+        wait(function()
+          return got ~= nil
+        end, 10000),
+        "the render never called back"
+      )
+    end)
+    display.get = real_get
+    assert(ok, failure)
+  end)
+
+  it("renders every equation at one scale, padded to whole cells", function()
+    if not (has_node and has_raster) then
+      pending("renderer toolchain unavailable")
+      return
+    end
+    local display = require("eqnav.display")
+    local real_get = display.get
+    display.get = function()
+      return {
+        name = "fake",
+        images = true,
+        geometry = function()
+          return geom
+        end,
+      }
+    end
+    local ok, failure = pcall(function()
+      local bufnr = helpers.buf(
+        "$$x = 1$$\n\n$$\\frac{\\frac{a}{b}}{c}$$\n\n$$\\sum_{i=1}^{n} i^2 = \\frac{n(n+1)(2n+1)}{6}$$\n",
+        "markdown"
+      )
+      local eqs = scan.scan(bufnr)
+      local results = {}
+      render.render_all(eqs, function(index, png, err)
+        results[index] = { png = png, err = err }
+      end, { force = true })
+      assert.is_true(
+        wait(function()
+          return results[1] and results[2] and results[3]
+        end),
+        "renders did not complete"
+      )
+
+      local density
+      for i, eq in ipairs(eqs) do
+        local r = results[i]
+        assert.is_nil(r.err, tostring(r.err))
+        local w, h = png_dims(r.png)
+        assert.are.equal(0, w % 20, "width " .. w .. " is not whole cells")
+        assert.are.equal(0, h % 45, "height " .. h .. " is not whole cells")
+
+        -- The SVG stays in CSS px, which the HTML export relies on, at one
+        -- density per MathJax unit for every entry.
+        local fh = assert(io.open(cache.path(eq.id, "svg")))
+        local svg = fh:read("*a")
+        fh:close()
+        local sw = tonumber(svg:match('width="([%d.]+)px"'))
+        local sh = tonumber(svg:match('height="([%d.]+)px"'))
+        local vb = tonumber(svg:match('viewBox="[-%d.]+ [-%d.]+ [-%d.]+ ([-%d.]+)"'))
+        density = density or sh / vb
+        assert.is_true(
+          math.abs(sh / vb - density) / density < 0.01,
+          "glyph scale differs in entry " .. i
+        )
+
+        -- The PNG is exactly that SVG at the display scale, padded: the smallest
+        -- cell box holding it, so nothing was stretched to reach the box.
+        local b = raster.box(sw * geom.scale, sh * geom.scale, geom)
+        assert.are.same({ b.width, b.height }, { w, h })
+        assert.is_true(
+          w - 20 < sw * geom.scale and h - 45 < sh * geom.scale,
+          "box has a spare cell"
+        )
+      end
+    end)
+    display.get = real_get
+    assert(ok, failure)
+  end)
+end)
