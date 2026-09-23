@@ -208,6 +208,11 @@ require("eqnav").toggle({opts})
                         Open, close, or toggle the index. {opts} may carry
                         `source_buf` and `focus`.
 
+                                                          *eqnav.is_open()*
+require("eqnav").is_open()
+                        Whether the index is open. Returns a boolean; useful
+                        for a statusline indicator or a conditional mapping.
+
                                                           *eqnav.refresh()*
 require("eqnav").refresh({force})
                         Re-scan and rebuild. {force} bypasses the cache.
@@ -230,6 +235,11 @@ require("eqnav").equations({bufnr})
                               mark,      -- extmark tracking live position
                             }
 <
+                                                             *eqnav.pick()*
+require("eqnav").pick({opts})
+                        Open the telescope picker behind |:EqnavPick|. {opts}
+                        are telescope picker options. Needs telescope.nvim.
+
                                                       *eqnav.export_html()*
 require("eqnav").export_html({path})
                         Export and open the HTML page.
