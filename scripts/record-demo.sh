@@ -99,8 +99,8 @@ EOF
   XDG_CACHE_HOME="$tmp/cache" nvim --headless -u tests/minimal_init.lua "$demo" \
     -c "luafile $tmp/export.lua"
   "$browser" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
-    --blink-settings=preferredColorScheme=0 \
-    --window-size=1000,966 --screenshot="$root/$png" "file://$tmp/demo.html" 2>/dev/null
+    --blink-settings=preferredColorScheme=0 --virtual-time-budget=5000 \
+    --window-size=1000,983 --screenshot="$root/$png" "file://$tmp/demo.html" 2>/dev/null
   echo "wrote $png"
 }
 
