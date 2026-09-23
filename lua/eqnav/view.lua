@@ -25,6 +25,8 @@ M.ns = vim.api.nvim_create_namespace("eqnav.view")
 ---@field equations eqnav.Equation[]
 ---@field entries eqnav.Entry[]
 ---@field anchor? eqnav.Anchor where render() is keeping the cursor
+---@field dirty? boolean set_image() recorded a result render() has not shown yet
+---@field scheduled? boolean a repaint for `dirty` is already queued
 local current = nil
 
 function M.current()
@@ -130,6 +132,9 @@ function M.render()
   if not current or not vim.api.nvim_buf_is_valid(current.buf) then
     return
   end
+  -- Whatever set_image() recorded is drawn by this pass; a repaint it queued
+  -- finds nothing left to do.
+  current.dirty = false
   local backend = display.get()
   local width = current.win
       and vim.api.nvim_win_is_valid(current.win)
@@ -307,7 +312,41 @@ function M.render()
   end
 end
 
---- Record a finished render and repaint just that entry's body.
+--- How long a finished render waits for others before the index is rebuilt.
+--- One frame or so: short enough that images still visibly stream in.
+local REPAINT_MS = 30
+
+--- Rebuild the index once for however many set_image() calls arrive within
+--- REPAINT_MS of the first, rather than once for each. A rebuild is O(n) in
+--- the number of equations, so one per render made filling in a document O(n²)
+--- (#3) -- on the main thread, just as the UI should stay responsive. Every
+--- cache hit arrives in the same batch, so an unchanged document repaints once.
+--- A throttle, not a debounce: a long stream of renders keeps landing every
+--- REPAINT_MS instead of all at the end.
+local function schedule_render()
+  local view = current
+  view.dirty = true
+  if view.scheduled then
+    return
+  end
+  view.scheduled = true
+  vim.defer_fn(function()
+    view.scheduled = false
+    if current == view and view.dirty then
+      M.render()
+    end
+  end, REPAINT_MS)
+end
+
+--- Draw now whatever set_image() has recorded and not yet drawn.
+function M.flush()
+  if current and current.dirty then
+    M.render()
+  end
+end
+
+--- Record a finished render; the index is repainted shortly, together with
+--- any other renders finishing around the same time (see schedule_render).
 ---
 --- `id` is the equation the render was started for. An ordinal alone is not an
 --- identity: a render in flight while the document changes comes back pointing
@@ -329,7 +368,7 @@ function M.set_image(index, png, err, id)
   end
   entry.png = png
   entry.err = err
-  M.render()
+  schedule_render()
 end
 
 --- Bring the whole of `entry` into view, not just its header.

@@ -48,6 +48,9 @@ local real_image_nvim = package.loaded["eqnav.display.image_nvim"]
 -- them sets the global 'scrolloff' the index is supposed to be immune to.
 local saved_lines, saved_scrolloff = vim.o.lines, vim.o.scrolloff
 
+-- Likewise view.render, which the rebuild-counting test wraps.
+local real_render = view.render
+
 local function open(text)
   local bufnr = helpers.buf(text or DOC, "markdown")
   vim.api.nvim_set_current_buf(bufnr)
@@ -107,6 +110,7 @@ describe("view", function()
     package.loaded["eqnav.display.image_nvim"] = real_image_nvim
     require("eqnav.display").reset()
     vim.o.lines, vim.o.scrolloff = saved_lines, saved_scrolloff
+    view.render = real_render
   end)
 
   it("uses the text backend when no image backend is available", function()
@@ -292,6 +296,7 @@ describe("view", function()
     for i = 1, #state.equations do
       view.set_image(i, "/stub.png", nil)
     end
+    view.flush()
     local win = state.win
     local last = state.entries[#state.entries]
 
@@ -430,6 +435,48 @@ describe("view", function()
     )
   end)
 
+  -- Each finished render used to rebuild the whole index, so a document of n
+  -- equations filling in cost n rebuilds of n entries each (#3). A burst of
+  -- them -- every cache hit arrives in one batch -- is now one rebuild.
+  it("coalesces a burst of finished renders into one rebuild", function()
+    stub_images()
+    local png = stub_png(4)
+    open(sections(50))
+    local state = view.current()
+    local rebuilds = 0
+    view.render = function()
+      rebuilds = rebuilds + 1
+      return real_render()
+    end
+
+    for i, eq in ipairs(state.equations) do
+      view.set_image(i, png, nil, eq.id)
+    end
+    assert.are.equal(0, rebuilds, "rebuilt before the burst was over")
+    assert.are.equal(png, state.entries[50].png, "the result was not recorded")
+
+    -- Left alone, the repaint happens by itself, once.
+    assert.is_true(vim.wait(1000, function()
+      return rebuilds > 0
+    end))
+    vim.wait(100)
+    assert.are.equal(1, rebuilds)
+    assert.are.equal(4, view.current().entries[50].rows)
+
+    -- A result for an equation that has since changed schedules nothing.
+    view.set_image(2, stub_png(6), nil, "stale")
+    vim.wait(100)
+    assert.are.equal(1, rebuilds)
+
+    -- flush() repaints now, and leaves nothing pending behind it.
+    view.set_image(2, stub_png(6), nil, state.equations[2].id)
+    view.flush()
+    assert.are.equal(2, rebuilds)
+    assert.are.equal(6, view.current().entries[2].rows)
+    vim.wait(100)
+    assert.are.equal(2, rebuilds)
+  end)
+
   -- `r` on a document nobody edited has nothing to change: every equation keeps
   -- its image until the new render lands, so the text is identical, and
   -- rewriting it anyway tore down every image and lost the view -- including a
@@ -446,6 +493,7 @@ describe("view", function()
       eq.id = "rendered:" .. eq.id
       view.set_image(i, png, nil, eq.id)
     end
+    view.flush()
     local win = state.win
     local header = state.entries[5].header_row
     vim.api.nvim_win_call(win, function()
@@ -469,6 +517,7 @@ describe("view", function()
     vim.fn.writefile({ "4" }, png)
     for _, eq in ipairs(state.equations) do
       view.set_image(eq.index, png, nil, eq.id)
+      view.flush() -- one at a time, as a slow stream of renders lands
     end
 
     assert.are.same(lines, vim.api.nvim_buf_get_lines(state.buf, 0, -1, false))
@@ -479,6 +528,7 @@ describe("view", function()
     -- A new image the same height swaps that one image, and nothing else.
     local other = stub_png(4)
     view.set_image(2, other, nil, state.equations[2].id)
+    view.flush()
     assert.are.equal(other, view.current().entries[2].png)
     assert.are.equal(tick, vim.api.nvim_buf_get_changedtick(state.buf))
     assert.are.equal(0, calls.clear)
@@ -486,6 +536,7 @@ describe("view", function()
 
     -- One of another height is laid out again.
     view.set_image(2, stub_png(6), nil, state.equations[2].id)
+    view.flush()
     assert.are.equal(6, view.current().entries[2].rows)
     assert.are_not.equal(tick, vim.api.nvim_buf_get_changedtick(state.buf))
   end)
@@ -503,6 +554,7 @@ describe("view", function()
       eq.id = "rendered:" .. eq.id -- as render_all does; see the spec above
       view.set_image(i, png, nil, eq.id)
     end
+    view.flush()
     -- Entry 5's header on the window's last row: the collapsed layout cannot
     -- hold it there, so the view has to be put back once the images land.
     local win = state.win
@@ -524,6 +576,7 @@ describe("view", function()
     for _, eq in ipairs(state.equations) do
       eq.id = "rendered:" .. eq.id
       view.set_image(eq.index, png, nil, eq.id)
+      view.flush() -- one at a time, as a slow stream of renders lands
     end
 
     assert.are.equal(6, view.cursor_entry(), "the cursor left its equation")
