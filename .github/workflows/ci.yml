@@ -47,11 +47,21 @@ jobs:
           repository: folke/snacks.nvim
           path: .tests/snacks.nvim
 
-      # snacks is checked out above, so a skip here means something broke.
+      # Without the latex parser every .tex test takes the regex path and the
+      # LaTeX query is never executed (#22). tree-sitter-latex does not ship a
+      # generated parser.c, so the CLI is needed to build it.
+      - name: Build the latex parser
+        run: |
+          npm install -g --no-audit --no-fund tree-sitter-cli@0.27.0
+          make parsers
+
+      # snacks and the latex parser are provided above, so a skip here means
+      # something broke.
       - name: Run tests
         run: make test
         env:
           EQNAV_REQUIRE_SNACKS: "1"
+          EQNAV_REQUIRE_LATEX: "1"
 
   lint:
     runs-on: ubuntu-latest

@@ -2,9 +2,10 @@
 %
 % This file's job is the code paths all-symbols.md structurally cannot reach:
 %
-%   1. The regex scanner (lua/eqnav/scan/regex.lua). With no `latex` treesitter
-%      parser installed, .tex buffers fall back to delimiter matching. Install
-%      the parser with :TSInstall latex to compare the two scanners.
+%   1. Both LaTeX scanners. With the `latex` treesitter parser (`make parsers`)
+%      a .tex buffer uses queries/latex/eqnav.scm; without it, the regex
+%      scanner (lua/eqnav/scan/regex.lua). tests/scan_spec.lua scans this file
+%      both ways and requires the two to agree entry for entry.
 %   2. \[..\] and \(..\) which are not markdown math and are skipped there.
 %   3. Bare \begin{align} etc, which in markdown must be wrapped in $$..$$.
 %   4. Preamble macro extraction -- render.preamble() in lua/eqnav/render/init.lua
