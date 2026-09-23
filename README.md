@@ -185,8 +185,7 @@ is instant and never starts Node at all. The foreground colour is part of the ha
 is how equations follow your colorscheme instead of staying black on a dark background.
 
 **The index appears before the images do.** Scanning is synchronous and fast; headers are
-drawn immediately and images fill in as they arrive. A 16-equation writeup scans in ~40ms
-and finishes rendering in ~250ms.
+drawn immediately and images fill in as they arrive.
 
 ### tmux
 
