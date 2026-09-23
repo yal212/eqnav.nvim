@@ -131,8 +131,9 @@ function M.render_all(equations, cb, opts)
           fit = { zoom = geom.scale, ppu = math.ceil(96 * geom.scale) }
           -- The daemon reports the equation's size in ex; the SVG it wrote is
           -- that times `ex` in CSS px, and the PNG that times the scale. A \tag
-          -- sizes the SVG as a percentage, which comes back as JSON null, and
-          -- vim.NIL is truthy: hence type(), and no padding for that one.
+          -- is reported at its natural width too (#40), but a size the daemon
+          -- could not work out comes back as JSON null, and vim.NIL is truthy:
+          -- hence type(), and no padding for that one.
           if type(res.width) == "number" and type(res.height) == "number" then
             local px = ex * geom.scale
             fit.box = raster.box(res.width * px, res.height * px, geom)

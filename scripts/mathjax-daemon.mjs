@@ -147,6 +147,11 @@ async function applyPreamble(preamble) {
   }
 }
 
+// The px per ex MathJax lays out in. It only shows where MathJax writes px of
+// its own, which is inside a labelled table (see stampPixelSize); passed on
+// every render so that is a known number rather than MathJax's default.
+const MJ_EX = 8;
+
 function exNum(v) {
   const m = /^([\d.eE+-]+)ex$/.exec(String(v || "").trim());
   return m ? parseFloat(m[1]) : null;
@@ -154,12 +159,28 @@ function exNum(v) {
 
 // Convert MathJax's ex-relative dimensions to absolute px so rasterization is
 // deterministic instead of depending on the renderer's default DPI.
+//
+// An equation with a \tag is a labelled table, and MathJax sizes those to their
+// container: width="100%", the natural width moved to a min-width style, and no
+// viewBox. Inside, the table and its labels are each a nested <svg> with a
+// 1-unit-wide viewBox, placed by preserveAspectRatio against that 100%. With no
+// container, rsvg-convert drew a 14x1 PNG (#40). Copying MathJax's
+// data-mjx-viewBox back to viewBox is not enough: the nested layout is in MathJax
+// px, not viewBox units, and comes out clipped, down to one row of an align.
+// What it needs is a real viewport of the natural width, in MathJax px, and
+// that is what the viewBox here gives it. The tag lands at the right of it.
 function stampPixelSize(adaptor, svg, exPx) {
-  const w = exNum(adaptor.getAttribute(svg, "width"));
+  let w = exNum(adaptor.getAttribute(svg, "width"));
   const h = exNum(adaptor.getAttribute(svg, "height"));
   const style = adaptor.getAttribute(svg, "style") || "";
   const dm = /vertical-align:\s*([-\d.]+)ex/.exec(style);
   const depth = dm ? parseFloat(dm[1]) : 0;
+  const mw = /min-width:\s*([\d.]+)ex;?\s*/.exec(style);
+  if (w === null && h !== null && mw && /%$/.test(adaptor.getAttribute(svg, "width") || "")) {
+    w = parseFloat(mw[1]);
+    adaptor.setAttribute(svg, "viewBox", `0 0 ${(w * MJ_EX).toFixed(3)} ${(h * MJ_EX).toFixed(3)}`);
+    adaptor.setAttribute(svg, "style", style.replace(mw[0], "").trim());
+  }
   if (w !== null) adaptor.setAttribute(svg, "width", (w * exPx).toFixed(2) + "px");
   if (h !== null) adaptor.setAttribute(svg, "height", (h * exPx).toFixed(2) + "px");
   return { width: w, height: h, depth };
@@ -193,7 +214,7 @@ function colorize(xml, color) {
 // call simply throws, so \mathbb{R} never rendered at all.
 async function render(equation, { display = false, color = null, preamble = null, ex = 8 } = {}) {
   await applyPreamble(preamble);
-  const node = await MathJax.tex2svgPromise(equation, { display });
+  const node = await MathJax.tex2svgPromise(equation, { display, ex: MJ_EX, em: 2 * MJ_EX });
   const adaptor = MathJax.startup.adaptor;
   const svg = node.children[0];
   const dims = stampPixelSize(adaptor, svg, ex);

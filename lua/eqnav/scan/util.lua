@@ -77,6 +77,12 @@ function M.summarize(tex, width)
   return vim.fn.strcharpart(one, 0, width - 1) .. "…"
 end
 
+--- The daemon's output format. It is in every cache key, so bump it whenever the
+--- daemon draws the same input differently -- otherwise a render cached before
+--- the change is served forever, bug included. 2: \tag rasterizing blank (#40)
+--- and a repeated \label rendering as an error box (#15).
+M.RENDER_VERSION = 2
+
 --- Stable identity for an equation's rendered form. Anything that changes the
 --- pixels must be in here, or a stale image is served from cache.
 ---@param tex string
@@ -86,6 +92,7 @@ end
 ---@param geom? eqnav.Geometry the cell size images are padded to, and the density
 function M.hash(tex, display, color, ex, geom)
   local key = table.concat({
+    tostring(M.RENDER_VERSION),
     tex,
     tostring(display),
     color or "-",

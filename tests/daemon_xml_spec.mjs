@@ -15,6 +15,9 @@
 // librsvg is absent) rasterizes as a blank image. The daemon must resolve the
 // currentColor attributes themselves.
 //
+// A \tag makes MathJax size the SVG as a percentage of its container (#40),
+// which rsvg-convert, with no container, drew as a blank 14x1 PNG.
+//
 //   node tests/daemon_xml_spec.mjs
 //
 import { execFile, spawnSync } from "node:child_process";
@@ -56,6 +59,16 @@ const MACRO_CASES = [
   "\\mathsection", "\\mathparagraph", "\\mathsterling", "\\mathdollar",
 ];
 
+// \tag puts the equation in a labelled table, which MathJax lays out as a
+// percentage of its container: width="100%", no viewBox. The first is
+// tests/fixtures/all-symbols.md's; the align has two rows and a tag on each,
+// which is what a naive viewBox fix clips away.
+const TAG_CASES = [
+  "\\boxed{a^2 + b^2 = c^2} \\qquad \\operatorname{Aut}(G) \\qquad \\text{tagged:} \\quad x = y \\tag{$\\ast$}",
+  "x = y \\tag{$\\ast$}",
+  "\\begin{align} a &= b \\tag{7} \\\\ c &= \\frac{d}{e} \\tag{8} \\end{align}",
+];
+
 const hasRsvg = spawnSync("rsvg-convert", ["--version"], { stdio: "ignore" }).status === 0;
 
 // Return an offending attribute value if any attribute holds a raw < or >, or an
@@ -85,6 +98,12 @@ function undefinedMacro(svg) {
 function errorBox(svg) {
   const m = /data-mjx-error="([^"]*)"/.exec(svg);
   return m ? m[1] : null;
+}
+
+// A PNG's pixel size, from its IHDR chunk.
+async function pngSize(file) {
+  const buf = await readFile(file);
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
 }
 
 let failures = 0;
@@ -161,6 +180,29 @@ async function run() {
       const svg = await readFile(out, "utf8");
       const undef = undefinedMacro(svg);
       check(`defines ${JSON.stringify(eq)}`, undef === null, undef && `rendered as red text: ${undef}`);
+    }
+
+    for (const eq of TAG_CASES) {
+      const tex = path.join(dir, `tag${i}.tex`);
+      const out = path.join(dir, `tag${i}.svg`);
+      const png = path.join(dir, `tag${i}.png`);
+      i++;
+      await writeFile(tex, eq, "utf8");
+      await execFileP("node", [daemon, "--in", tex, "--out", out, "--display"]);
+      const svg = await readFile(out, "utf8");
+      const root = /<svg[^>]*>/.exec(svg)[0];
+
+      const err = errorBox(svg);
+      check(`renders ${JSON.stringify(eq)} without an error box`, err === null, err);
+      const width = /\swidth="([^"]*)"/.exec(root);
+      check(`gives ${JSON.stringify(eq)} an absolute width`, width && /px$/.test(width[1]), width && width[1]);
+      check(`gives ${JSON.stringify(eq)} a viewBox`, /\sviewBox="/.test(root), root.slice(0, 160));
+
+      if (hasRsvg) {
+        await execFileP("rsvg-convert", ["-o", png, out]);
+        const { w, h } = await pngSize(png);
+        check(`rasterizes ${JSON.stringify(eq)} to a visible size`, w >= 50 && h >= 10, `${w}x${h}`);
+      }
     }
 
     if (!hasRsvg) console.log("  note: rsvg-convert not on PATH, rasterization checks skipped");

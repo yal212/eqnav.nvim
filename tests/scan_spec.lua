@@ -50,6 +50,15 @@ describe("scan.util", function()
     assert.are_not.equal(base, util.hash("x", true, "000000", 9))
     assert.are_not.equal(base, util.hash("x", true, 18))
   end)
+
+  it("hashes on the daemon's output version, so an upgrade does not serve old renders", function()
+    local base = util.hash("x", true, "ffffff", 9)
+    local version = util.RENDER_VERSION
+    util.RENDER_VERSION = version + 1
+    local bumped = util.hash("x", true, "ffffff", 9)
+    util.RENDER_VERSION = version
+    assert.are_not.equal(base, bumped)
+  end)
 end)
 
 describe("scan (markdown, treesitter)", function()
