@@ -28,39 +28,6 @@ local function skip_unless_snacks()
   return false
 end
 
---- A plain `w`x`h` px PNG made by the rasterizer eqnav uses, or nil (and the
---- test marked pending) when there is none.
----@return string|nil
-local function make_png(w, h)
-  local raster = require("eqnav.render.raster")
-  if not raster.detect() then
-    pending("no rasterizer")
-    return nil
-  end
-  local tmp = vim.fn.tempname()
-  local fh = assert(io.open(tmp .. ".svg", "w"))
-  fh:write(
-    string.format(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="%dpx" height="%dpx">'
-        .. '<rect width="%d" height="%d" fill="#fff"/></svg>',
-      w,
-      h,
-      w,
-      h
-    )
-  )
-  fh:close()
-  local png
-  raster.convert(tmp .. ".svg", tmp .. ".png", function(p)
-    png = p or false
-  end)
-  assert.is_true(vim.wait(10000, function()
-    return png ~= nil
-  end))
-  assert.is_truthy(png)
-  return png
-end
-
 describe("snacks backend", function()
   it("declines gracefully when the terminal has no graphics", function()
     -- Headless: snacks may be loadable but reports no graphics support, and
@@ -148,7 +115,7 @@ describe("snacks backend", function()
     end
     local g = backend.geometry()
     local w, h = math.ceil(40 * g.cell_width), math.ceil(4 * g.cell_height)
-    local png = make_png(w, h)
+    local png = helpers.make_png(w, h)
     if not png then
       return
     end
@@ -172,7 +139,7 @@ describe("snacks backend", function()
     if skip_unless_snacks() then
       return
     end
-    local first, second = make_png(64, 32), make_png(64, 32)
+    local first, second = helpers.make_png(64, 32), helpers.make_png(64, 32)
     if not (first and second) then
       return
     end

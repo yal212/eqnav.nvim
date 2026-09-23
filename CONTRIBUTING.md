@@ -20,6 +20,13 @@ They look for it at `$PLENARY_PATH`, then in lazy.nvim's directory, then at
 git clone --depth 1 https://github.com/nvim-lua/plenary.nvim .tests/plenary.nvim
 ```
 
+The image.nvim backend's contract spec needs [image.nvim](https://github.com/3rd/image.nvim)
+in the same place. Without it, that spec reports as pending:
+
+```
+git clone --depth 1 https://github.com/3rd/image.nvim .tests/image.nvim
+```
+
 ## Tests
 
 ```
@@ -41,12 +48,13 @@ the node daemon never starts, so a warm run hides render-path failures that CI, 
 starts cold, will hit. To run the suite the way CI does:
 
 ```
-XDG_CACHE_HOME=$(mktemp -d) EQNAV_REQUIRE_SNACKS=1 EQNAV_REQUIRE_LATEX=1 make test
+XDG_CACHE_HOME=$(mktemp -d) EQNAV_REQUIRE_SNACKS=1 EQNAV_REQUIRE_IMAGE_NVIM=1 \
+  EQNAV_REQUIRE_LATEX=1 make test
 ```
 
-`EQNAV_REQUIRE_SNACKS` and `EQNAV_REQUIRE_LATEX` turn a missing snacks.nvim or latex parser
-into a failure instead of a skip. Leave out `EQNAV_REQUIRE_LATEX` if you have not run
-`make parsers`.
+`EQNAV_REQUIRE_SNACKS`, `EQNAV_REQUIRE_IMAGE_NVIM` and `EQNAV_REQUIRE_LATEX` turn a missing
+snacks.nvim, image.nvim or latex parser into a failure instead of a skip. Leave out
+`EQNAV_REQUIRE_LATEX` if you have not run `make parsers`.
 
 ### The latex parser
 

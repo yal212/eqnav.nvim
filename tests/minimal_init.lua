@@ -22,6 +22,18 @@ for _, dir in ipairs({
   end
 end
 
+-- Optional: image.nvim, for its contract test. Other specs are unaffected: it is
+-- never set up there, so the backend reports itself unavailable.
+for _, dir in ipairs({
+  root .. "/.tests/image.nvim",
+  vim.fn.expand("~/.local/share/nvim/lazy/image.nvim"),
+}) do
+  if vim.fn.isdirectory(dir) == 1 then
+    vim.opt.runtimepath:append(dir)
+    break
+  end
+end
+
 -- Optional: the pinned `latex` parser built by `make parsers` (CI builds it and
 -- sets EQNAV_REQUIRE_LATEX). Ahead of the user's parser dir so a local run tests
 -- the same parser CI does.
