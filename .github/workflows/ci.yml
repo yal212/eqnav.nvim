@@ -5,14 +5,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# A second push to the same ref makes the first run's result moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: test (nvim ${{ matrix.nvim }})
+    name: test (nvim ${{ matrix.nvim }}, node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         nvim: [stable, nightly]
+        node: [20]
+        # 18 is the floor the docs and package.json advertise, so it is tested,
+        # once rather than against every nvim.
+        include:
+          - nvim: stable
+            node: 18
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +37,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
+          cache: npm
 
       # librsvg2-bin provides rsvg-convert, the rasterizer the render tests use.
       - name: Install rasterizer
@@ -62,6 +77,26 @@ jobs:
         env:
           EQNAV_REQUIRE_SNACKS: "1"
           EQNAV_REQUIRE_LATEX: "1"
+
+  # doc/eqnav.txt is hand-written; a duplicate or malformed tag would otherwise
+  # first surface as a user's :help eqnav failing. A bare :helptags reports E154
+  # and still exits 0, hence the try/cquit.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+
+      - name: Generate help tags
+        run: |
+          nvim --headless -u NONE \
+            -c 'try | helptags doc | catch | echo v:exception | cquit | endtry' \
+            -c 'qa!'
+          test -s doc/tags
 
   lint:
     runs-on: ubuntu-latest
