@@ -168,19 +168,4 @@ function M.render_all(equations, cb, opts)
   pump()
 end
 
---- Render a single equation, used by the picker previewer and hover.
----@param eq eqnav.Equation
----@param cb fun(png: string|nil, err: string|nil)
-function M.render_one(eq, cb)
-  if not config.options.render.enabled then
-    vim.schedule(function()
-      cb(nil, "rendering disabled")
-    end)
-    return
-  end
-  M.render_all({ eq }, function(_, png, err)
-    cb(png, err)
-  end)
-end
-
 return M
