@@ -61,7 +61,8 @@ With [lazy.nvim][lazy]. The `build` step installs MathJax into the plugin direct
     "folke/snacks.nvim",      -- optional: renders equations as images
     "nvim-telescope/telescope.nvim", -- optional: :EqnavPick
   },
-  ft = { "markdown", "tex", "quarto" },
+  -- Must cover `filetypes` below: `ft` decides whether eqnav loads at all.
+  ft = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex" },
   opts = {},
   keys = {
     { "<leader>e", "<cmd>Eqnav<cr>", desc = "Equation index" },
