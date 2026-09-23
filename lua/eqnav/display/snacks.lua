@@ -31,9 +31,8 @@ function M.available()
   return ok and supported == true
 end
 
---- Pixels per terminal cell, used to convert an image's height into the number
---- of buffer lines that must be reserved for it.
----@return integer cell_width, integer cell_height
+--- Pixels per terminal cell, and device px per CSS px, as snacks measures them.
+---@return number cell_width, number cell_height, number scale
 local function cell_size()
   local s = snacks()
   if s then
@@ -41,10 +40,19 @@ local function cell_size()
       return s.image.terminal.size()
     end)
     if ok and size and (size.cell_height or 0) > 0 then
-      return size.cell_width, size.cell_height
+      return size.cell_width, size.cell_height, math.max(1, size.scale or 1)
     end
   end
-  return 8, 17 -- a reasonable default; only affects spacing, not correctness
+  return 8, 17, 1 -- a reasonable default; only affects spacing, not correctness
+end
+
+--- What the renderer sizes images for. Rendering at `scale` keeps glyphs sharp
+--- on a HiDPI display, and the renderer pads to whole cells of this size, which
+--- is what makes rows() exact.
+---@return eqnav.Geometry
+function M.geometry()
+  local cw, ch, scale = cell_size()
+  return { cell_width = cw, cell_height = ch, scale = scale }
 end
 
 ---@param png string|nil
@@ -78,13 +86,27 @@ local function png_size(png)
   return u32(17), u32(21)
 end
 
-function M.rows(_eq, png, _width)
+--- Exact rather than an estimate: the renderer pads each image to whole cells
+--- of geometry() and stamps it with the DPI that makes snacks' `px / dpi * 96 *
+--- scale` sizing come out 1:1 (raster.box and raster.stamp_dpi). So its height
+--- in cells is what snacks draws, unless the image is wider than the window:
+--- snacks then shrinks it to fit, keeping its aspect, and it takes fewer rows.
+--- That case is asked of snacks' own fit() rather than copied from it.
+function M.rows(_eq, png, width)
   local _, h = png_size(png)
   if h == 0 then
     return 1
   end
   local _, cell_h = cell_size()
-  return math.max(1, math.ceil(h / cell_h))
+  local rows = math.max(1, math.ceil(h / cell_h))
+  local s = snacks()
+  local ok, fit = pcall(function()
+    return s.image.util.fit(png, { width = width, height = rows })
+  end)
+  if ok and fit and (fit.height or 0) > 0 then
+    return math.min(rows, fit.height)
+  end
+  return rows
 end
 
 function M.lines()

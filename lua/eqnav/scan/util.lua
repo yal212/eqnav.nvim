@@ -83,8 +83,15 @@ end
 ---@param display boolean
 ---@param color string|nil
 ---@param ex number
-function M.hash(tex, display, color, ex)
-  local key = table.concat({ tex, tostring(display), color or "-", tostring(ex) }, "\0")
+---@param geom? eqnav.Geometry the cell size images are padded to, and the density
+function M.hash(tex, display, color, ex, geom)
+  local key = table.concat({
+    tex,
+    tostring(display),
+    color or "-",
+    tostring(ex),
+    geom and string.format("%sx%s@%s", geom.cell_width, geom.cell_height, geom.scale) or "-",
+  }, "\0")
   return vim.fn.sha256(key):sub(1, 32)
 end
 

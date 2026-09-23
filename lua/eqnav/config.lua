@@ -22,7 +22,7 @@ local defaults = {
 
   render = {
     enabled = true,
-    ex = 9, -- px per TeX `ex` unit; the knob that sets equation size
+    ex = 9, -- CSS px per TeX `ex`, times the display density; sets equation size
     color = nil, -- nil follows the Normal highlight's foreground
     concurrency = 8, -- parallel rasterizer processes
     node = "node",

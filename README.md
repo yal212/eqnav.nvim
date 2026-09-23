@@ -120,7 +120,7 @@ require("eqnav").setup({
 
   render = {
     enabled = true,
-    ex = 9,           -- px per TeX `ex`; the equation-size knob
+    ex = 9,           -- CSS px per TeX `ex`; the equation-size knob
     color = nil,      -- nil follows the Normal highlight's foreground
     concurrency = 8,
     node = "node",

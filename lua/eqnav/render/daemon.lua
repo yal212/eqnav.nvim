@@ -211,7 +211,7 @@ end
 
 --- Ask the daemon for one equation's SVG.
 ---@param req eqnav.RenderRequest
----@param cb fun(res: { ok: boolean, svg?: string, err?: string })
+---@param cb fun(res: { ok: boolean, svg?: string, err?: string, width?: number, height?: number, depth?: number }) sizes in ex
 function M.request(req, cb)
   if not M.start() then
     cb({ ok = false, err = state.failed or "daemon unavailable" })

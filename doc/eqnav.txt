@@ -164,8 +164,13 @@ include_inline ~
 
                                                                  *eqnav-ex*
 render.ex ~
-    Pixels per TeX `ex` unit. This is the equation-size knob. Raise it for
+    CSS pixels per TeX `ex` unit. This is the equation-size knob. Raise it for
     larger equations in the index.
+
+    With the snacks.nvim backend, equations are drawn at the display's pixel
+    density (9 is 22.5 device pixels on a 2.5x display) and padded to whole
+    terminal cells, so every equation is shown at the same scale, unstretched.
+    A font-size change therefore re-renders on the next refresh.
 
                                                               *eqnav-color*
 render.color ~
