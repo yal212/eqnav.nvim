@@ -81,6 +81,7 @@ Make sure snacks has images on:
 | Command | |
 |---|---|
 | `:Eqnav` | toggle the index |
+| `:EqnavOpen` / `:EqnavClose` | open / close the index |
 | `:EqnavRefresh[!]` | re-scan (`!` bypasses the render cache) |
 | `:EqnavPick` | fuzzy-find an equation (telescope) |
 | `:EqnavExport [path]` | export to a self-contained HTML page and open it |
@@ -147,10 +148,16 @@ require("eqnav").setup({
 
 ```lua
 local eqnav = require("eqnav")
-eqnav.toggle()
+eqnav.open()           -- also close(), toggle()
+eqnav.is_open()        --> boolean  (for a statusline or a conditional keymap)
+eqnav.refresh(force)   -- re-scan; force bypasses the render cache
 eqnav.equations(bufnr) --> eqnav.Equation[]  (scan without opening anything)
+eqnav.pick(opts)       -- the telescope picker behind :EqnavPick
 eqnav.export_html(path)
+eqnav.clear_cache()    --> number of files removed
 ```
+
+`:help eqnav-api` has the details.
 
 ## How it works
 
