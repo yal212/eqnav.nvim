@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in eqnav does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The `:checkhealth eqnav` output below answers most of the
+        questions a triager would otherwise ask, so please don't skip it.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+      placeholder: |
+        Opened the index with :Eqnav on the document below. Expected three entries; got two,
+        and the align environment is missing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: A minimal document that reproduces it
+      description: |
+        The smallest `.md` / `.tex` / `.qmd` snippet that still shows the problem. For a render
+        problem, the one equation is usually enough.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: health
+    attributes:
+      label: ":checkhealth eqnav"
+      description: |
+        The full output. It covers Neovim, the renderer, the rasterizer, the display backend,
+        the terminal, treesitter and the cache.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: nvim
+    attributes:
+      label: nvim --version
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal and multiplexer
+      description: With versions, if you know them.
+      placeholder: Ghostty 1.2.0 inside tmux 3.5a
+    validations:
+      required: true
+
+  - type: input
+    id: filetype
+    attributes:
+      label: Filetype
+      description: "`:set filetype?` in the source buffer."
+      placeholder: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your eqnav config
+      description: Your `setup()` options, if you changed anything.
+      render: lua

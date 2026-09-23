@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # MathJax is the one dependency whose updates change rendered output, so they
+  # are worth noticing; a new version is worth a `make demo-cold`.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      mathjax:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
