@@ -8,16 +8,19 @@ A separate, prose-free page of your document's **rendered** equations. Walk it w
 `j`/`k`, press `<CR>`, and land on that equation in the source.
 
 ```
- eqnav · 16 equations · so-easy-rsa-en.md          │  ## Observation
+ eqnav · 7 equations · demo.md                     │  ## Observation
                                                    │
-   1  Observation                          L72     │  The generator advances by
-      s_{t+1} ≡ (s_t · A + B)  (mod M)             │
+   1  Setup                                L11     │  The generator advances by one
+      s_t ∈ ℤ_M = {0, 1, …, M − 1}                 │  multiply and one add:
+                                                   │
+   2  Observation                          L22     │  $$
+      s_{t+1} ≡ s_t · A + B  (mod M)               │  s_{t+1} \equiv s_t \cdot A + B
                                                    │  $$
-   2  Action                               L93     │  s_{t+1} \equiv (s_t \cdot
-      p ≡ (s_p + A)  (mod M)                       │  $$
-                                                   │
-   3  Action                               L95     │  which means we can walk it
-      s_p ≡ (p - A)  (mod M)                       │  backwards…
+   3  Observation                          L29     │
+      gcd(A, M) = 1                                │  which means we can walk it
+                                                   │  backwards, as long as…
+   4  Action                               L39     │
+      s_t ≡ (s_{t+1} − B) · A⁻¹  (mod M)           │
 ```
 
 ## Why
