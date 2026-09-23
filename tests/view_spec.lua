@@ -40,6 +40,10 @@ end
 -- Saved once, restored after every test: the image-cleanup tests patch it.
 local text_clear = require("eqnav.display.text").clear
 
+-- Likewise the module a stub image backend stands in for (see "reveals an
+-- image drawn taller..."), restored even when that test fails part-way.
+local real_image_nvim = package.loaded["eqnav.display.image_nvim"]
+
 -- Likewise for the geometry: the scrolling tests shrink the window, and one of
 -- them sets the global 'scrolloff' the index is supposed to be immune to.
 local saved_lines, saved_scrolloff = vim.o.lines, vim.o.scrolloff
@@ -58,6 +62,8 @@ describe("view", function()
   after_each(function()
     eqnav.close()
     require("eqnav.display.text").clear = text_clear
+    package.loaded["eqnav.display.image_nvim"] = real_image_nvim
+    require("eqnav.display").reset()
     vim.o.lines, vim.o.scrolloff = saved_lines, saved_scrolloff
   end)
 
@@ -203,6 +209,73 @@ describe("view", function()
       )
     )
     assert.is_true(vim.fn.line("w$", state.win) >= entry.body_row, "none of the body is on screen")
+  end)
+
+  -- What snacks actually does, which the text backend above cannot show: it
+  -- sizes an image by its DPI and the display scale, not the cell height
+  -- rows() divides by, so at a Retina font size a one-row reservation draws
+  -- as two rows -- hung as virtual lines under the reserved row (#38). The
+  -- cursor stopping on that row does not bring lines below it into view.
+  it("reveals an image drawn taller than the rows reserved for it", function()
+    vim.o.lines = 14
+    vim.o.scrolloff = 0
+    local ns = vim.api.nvim_create_namespace("eqnav.test.stub_image")
+    -- Stands in for a real backend name, which is all config will accept.
+    package.loaded["eqnav.display.image_nvim"] = {
+      name = "stub_image",
+      images = true,
+      available = function()
+        return true
+      end,
+      rows = function()
+        return 1
+      end,
+      lines = function()
+        return nil
+      end,
+      place = function(bufnr, row)
+        vim.api.nvim_buf_set_extmark(bufnr, ns, row - 1, 0, {
+          virt_lines = { { { "image row 1" } }, { { "image row 2" } } },
+        })
+      end,
+      clear = function(bufnr)
+        vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+      end,
+    }
+    eqnav.setup({ render = { enabled = false }, display = { backend = "image_nvim" } })
+    require("eqnav.display").reset()
+
+    open(sections(6))
+    local state = view.current()
+    for i = 1, #state.equations do
+      view.set_image(i, "/stub.png", nil)
+    end
+    local win = state.win
+    local last = state.entries[#state.entries]
+
+    view.goto_entry(1)
+    for _ = 1, #state.equations do
+      view.next()
+    end
+
+    -- Screen rows from the top of the window through the virtual lines hung
+    -- under the body. Neovim stores those as filler *above the next line*, so
+    -- they are counted by ending on that line at vcol 0: ending on the body row
+    -- itself leaves them out, and so does 'w$', which is how this got past the
+    -- checks above.
+    local drawn = vim.api.nvim_win_text_height(win, {
+      start_row = vim.fn.line("w0", win) - 1,
+      end_row = last.body_row + last.rows - 1,
+      end_vcol = 0,
+    }).all
+    assert.is_true(
+      drawn <= vim.api.nvim_win_get_height(win),
+      ("image ends %d screen rows down a %d-row window"):format(
+        drawn,
+        vim.api.nvim_win_get_height(win)
+      )
+    )
+    assert.are.equal(last.header_row, vim.api.nvim_win_get_cursor(win)[1])
   end)
 
   -- A global 'scrolloff' re-centres the cursor on the header and pushes the body
