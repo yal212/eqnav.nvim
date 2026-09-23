@@ -1,5 +1,9 @@
 # eqnav.nvim
 
+[![CI](https://github.com/yal212/eqnav.nvim/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yal212/eqnav.nvim/actions/workflows/ci.yml)
+[![Neovim 0.10+](https://img.shields.io/badge/Neovim-0.10%2B-57A143?logo=neovim&logoColor=white)](#requirements)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+
 A separate, prose-free page of your document's **rendered** equations. Walk it with
 `j`/`k`, press `<CR>`, and land on that equation in the source.
 
@@ -30,10 +34,19 @@ document means bouncing between prose and math, and every bounce costs a refocus
 you can decide *"no, not that one."* An index with the prose stripped out is faster to
 scan than the document is.
 
-Neovim has excellent **inline** math preview — [`mdmath.nvim`][mdmath],
-[`render-latex.nvim`][renderlatex], [`latex-preview.nvim`][latexpreview],
-[`nabla.nvim`][nabla], neorg. None of them do the indexed view. eqnav is only that: the
-index and the jump-back. Rendering is something it consumes, not something it invents.
+Neovim already has excellent **inline** math preview:
+
+| Plugin | What it does | Indexed view |
+|---|---|---|
+| [`mdmath.nvim`][mdmath] | renders Markdown equations in place, over the source | — |
+| [`render-latex.nvim`][renderlatex] | renders display math in place in Markdown; inline math stays light | — |
+| [`latex-preview.nvim`][latexpreview] | pops up the equation under the cursor, rendered, on demand | — |
+| [`nabla.nvim`][nabla] | draws LaTeX as ASCII art, in a popup or as virtual text | — |
+| [neorg][neorg] | renders LaTeX in place in `.norg` files | — |
+| **eqnav.nvim** | lists every equation on its own page and jumps back to the source | ✓ |
+
+eqnav is only that: the index and the jump-back. Rendering is something it consumes, not
+something it invents.
 
 ## Requirements
 
@@ -161,6 +174,34 @@ eqnav.clear_cache()    --> number of files removed
 
 `:help eqnav-api` has the details.
 
+## Troubleshooting
+
+Start with `:checkhealth eqnav`. It checks Node and MathJax, the rasterizer, the image
+backend, the terminal and the treesitter parsers, and names whichever is missing.
+
+### tmux
+
+Terminal graphics need passthrough:
+
+```tmux
+set -g allow-passthrough on
+```
+
+`:checkhealth eqnav` reports whether it is set. If images still do not appear, the text
+backend and `:EqnavExport` both work everywhere.
+
+### LaTeX documents
+
+Install the parser for the best results:
+
+```vim
+:TSInstall latex
+```
+
+eqnav reads `\newcommand`, `\renewcommand` and `\DeclareMathOperator` out of the preamble
+and passes them to MathJax, so a document's own macros resolve. MathJax is not TeX,
+though — equations depending on real LaTeX packages may not render identically.
+
 ## How it works
 
 ```
@@ -192,29 +233,6 @@ lines to fit it. An equation that can't be broken, such as a wide matrix, is shr
 instead and its header is marked `⟷`. After resizing the index, press `r` to render for the
 new width.
 
-### tmux
-
-Terminal graphics need passthrough:
-
-```tmux
-set -g allow-passthrough on
-```
-
-`:checkhealth eqnav` reports whether it is set. If images still do not appear, the text
-backend and `:EqnavExport` both work everywhere.
-
-### LaTeX documents
-
-Install the parser for the best results:
-
-```vim
-:TSInstall latex
-```
-
-eqnav reads `\newcommand`, `\renewcommand` and `\DeclareMathOperator` out of the preamble
-and passes them to MathJax, so a document's own macros resolve. MathJax is not TeX,
-though — equations depending on real LaTeX packages may not render identically.
-
 ## Contributing
 
 Tests, the sandboxed demo harness and the commit conventions are in
@@ -240,6 +258,7 @@ MIT
 [renderlatex]: https://github.com/techwizrd/render-latex.nvim
 [latexpreview]: https://github.com/sonv/latex-preview.nvim
 [nabla]: https://github.com/jbyuki/nabla.nvim
+[neorg]: https://github.com/nvim-neorg/neorg
 [snacks]: https://github.com/folke/snacks.nvim
 [imagenvim]: https://github.com/3rd/image.nvim
 [lazy]: https://github.com/folke/lazy.nvim
