@@ -226,15 +226,22 @@ end
 --- left its image below the last visible row, reachable only through keys the
 --- index does not advertise.
 ---
---- Touching the last body row first hands the scrolling to Neovim, which is
---- what keeps this right under an image backend: those rows are virtual lines
---- or terminal overlays, not text this could measure itself. Moving back to
---- the header scrolls a second time only when the entry is taller than the
---- window, landing the header at the top with as much of the body as fits.
+--- Touching the blank separator line after the body first hands the scrolling
+--- to Neovim, which is what keeps this right under an image backend: those
+--- rows are virtual lines or terminal overlays, not text this could measure
+--- itself. It has to be the separator, not the last body row. snacks sizes an
+--- image by its DPI and the display scale rather than the cell height
+--- `rows` was computed from, so it can draw taller than the rows reserved,
+--- hanging the surplus as virtual lines under the body. Neovim treats a line
+--- as visible without the virtual lines below it, so stopping on the body
+--- left a one-row entry's image cut off at the bottom of the pane (#38). The
+--- separator comes after all of them. Moving back to the header scrolls a
+--- second time only when the entry is taller than the window, landing the
+--- header at the top with as much of the body as fits.
 ---@param entry eqnav.Entry
 local function reveal(entry)
   local last = vim.api.nvim_buf_line_count(current.buf)
-  local bottom = math.min(entry.body_row + entry.rows - 1, last)
+  local bottom = math.min(entry.body_row + entry.rows, last)
   vim.api.nvim_win_set_cursor(current.win, { bottom, 0 })
   vim.api.nvim_win_set_cursor(current.win, { entry.header_row, 0 })
 end
