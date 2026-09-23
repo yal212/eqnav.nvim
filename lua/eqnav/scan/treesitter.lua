@@ -45,6 +45,46 @@ local function under_queried_parent(ltree)
   return false
 end
 
+--- Name of a LaTeX environment node, e.g. "align*".
+---@param node TSNode
+---@param bufnr integer
+---@return string|nil
+local function environment_name(node, bufnr)
+  local begin = node:field("begin")[1]
+  local name = begin and begin:field("name")[1]
+  if not name then
+    return nil
+  end
+  return (vim.treesitter.get_node_text(name, bufnr) or ""):match("^{%s*(.-)%s*}$")
+end
+
+--- Drop every capture that lies inside another one. The grammar makes
+--- aligned/split/array math environments in their own right, and they are
+--- almost always written inside an equation or \[..\]: the nested one is part
+--- of that entry, not an entry of its own. Same rule regex.lua applies.
+---@param found eqnav.Equation[]
+---@return eqnav.Equation[]
+local function drop_nested(found)
+  local function before(ar, ac, br, bc)
+    return ar < br or (ar == br and ac < bc)
+  end
+  table.sort(found, function(a, b)
+    if a.lnum ~= b.lnum or a.col ~= b.col then
+      return before(a.lnum, a.col, b.lnum, b.col)
+    end
+    -- Same start: the wider range first, so it is the one kept.
+    return before(b.end_lnum, b.end_col, a.end_lnum, a.end_col)
+  end)
+  local out, last = {}, nil
+  for _, eq in ipairs(found) do
+    if not (last and not before(last.end_lnum, last.end_col, eq.end_lnum, eq.end_col)) then
+      table.insert(out, eq)
+      last = eq
+    end
+  end
+  return out
+end
+
 --- Scan a buffer for math nodes using treesitter.
 ---@param bufnr integer
 ---@return eqnav.Equation[]|nil equations, string|nil err
@@ -84,6 +124,8 @@ function M.scan(bufnr)
         end
         if display == nil then
           display = node:type() ~= "inline_formula"
+            -- \begin{math} is the environment spelling of \(..\).
+            and not (node:type() == "math_environment" and environment_name(node, bufnr) == "math")
         end
 
         if tex ~= "" then
@@ -106,7 +148,7 @@ function M.scan(bufnr)
   if not any_query then
     return nil, "no eqnav query for any language in this buffer"
   end
-  return found
+  return drop_nested(found)
 end
 
 --- Whether treesitter can handle this buffer at all, used to pick a scanner.
