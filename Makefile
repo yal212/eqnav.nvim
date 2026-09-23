@@ -1,6 +1,8 @@
-.PHONY: test test-lua test-daemon lint fmt clean demo demo-tex demo-cold
+.PHONY: test test-lua test-daemon lint fmt clean demo demo-tex demo-cold parsers
 
 NVIM ?= nvim
+TREE_SITTER ?= tree-sitter
+CC ?= cc
 
 test: test-daemon test-lua
 
@@ -33,6 +35,26 @@ demo-cold: .tests/snacks.nvim
 # Without it display.get() returns the text backend and nothing renders.
 .tests/snacks.nvim:
 	git clone --filter=blob:none --depth 1 https://github.com/folke/snacks.nvim $@
+
+# The `latex` treesitter parser, so the LaTeX query is actually executed rather
+# than every .tex test silently taking the regex path. Pinned to the revision
+# nvim-treesitter installs, which is what users get from :TSInstall latex.
+# tree-sitter-latex does not commit parser.c, so it is generated -- from
+# grammar.json, which needs no JS runtime. ABI 14 so Neovim 0.10 can load it.
+LATEX_REV := fa8df448fc2c0192a8c2f8cfc97de53cb2b4ecb9
+
+parsers: .tests/parsers/parser/latex.so
+
+.tests/parsers/parser/latex.so:
+	rm -rf .tests/tree-sitter-latex
+	git init -q .tests/tree-sitter-latex
+	git -C .tests/tree-sitter-latex fetch -q --depth 1 \
+		https://github.com/latex-lsp/tree-sitter-latex $(LATEX_REV)
+	git -C .tests/tree-sitter-latex checkout -q FETCH_HEAD
+	cd .tests/tree-sitter-latex && $(TREE_SITTER) generate --abi 14 src/grammar.json
+	mkdir -p $(dir $@)
+	$(CC) -shared -fPIC -O2 -I.tests/tree-sitter-latex/src \
+		.tests/tree-sitter-latex/src/parser.c .tests/tree-sitter-latex/src/scanner.c -o $@
 
 lint:
 	stylua --check lua plugin tests

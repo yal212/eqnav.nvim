@@ -22,6 +22,13 @@ for _, dir in ipairs({
   end
 end
 
+-- Optional: the pinned `latex` parser built by `make parsers` (CI builds it and
+-- sets EQNAV_REQUIRE_LATEX). Ahead of the user's parser dir so a local run tests
+-- the same parser CI does.
+if vim.fn.isdirectory(root .. "/.tests/parsers") == 1 then
+  vim.opt.runtimepath:append(root .. "/.tests/parsers")
+end
+
 -- Optional: the user's parser dir, so `latex` is available when installed.
 local ts = vim.fn.expand("~/.local/share/nvim/lazy/nvim-treesitter")
 if vim.fn.isdirectory(ts) == 1 then

@@ -4,7 +4,8 @@
 -- plugin/eqnav.lua runs and :Eqnav and friends actually exist.
 --
 --   make demo        markdown fixture, treesitter scanner
---   make demo-tex    latex fixture, regex scanner + preamble macros
+--   make demo-tex    latex fixture + preamble macros; treesitter scanner once
+--                    `make parsers` has built .tests/parsers, regex otherwise
 --   make demo-cold   throwaway XDG_CACHE_HOME, so renders really happen
 --
 -- Deliberately independent of ~/.config/nvim: what you see here is the plugin,
@@ -35,6 +36,13 @@ local snacks_dir = first_dir({
 })
 if snacks_dir then
   vim.opt.runtimepath:append(snacks_dir)
+end
+
+-- The pinned `latex` parser from `make parsers`, ahead of any the user has, so
+-- demo-tex runs the same parser CI tests against.
+local parsers_dir = first_dir({ root .. "/.tests/parsers" })
+if parsers_dir then
+  vim.opt.runtimepath:append(parsers_dir)
 end
 
 local ts_dir = first_dir({ vim.fn.expand("~/.local/share/nvim/lazy/nvim-treesitter") })

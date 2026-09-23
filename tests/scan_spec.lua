@@ -292,3 +292,128 @@ describe("scan extmarks", function()
     assert.are.equal(3, eqs[1].lnum, "the original scan value is untouched")
   end)
 end)
+
+-- Nothing else runs queries/latex/eqnav.scm: without the parser every .tex
+-- buffer takes the regex path, which is how a query that captured no
+-- environments at all (#1) shipped. CI builds the parser with `make parsers`
+-- and sets EQNAV_REQUIRE_LATEX, which turns a missing parser into a failure.
+local has_latex = pcall(vim.treesitter.language.add, "latex")
+  and vim.treesitter.language.add("latex") == true
+
+local function skip_unless_latex()
+  if not has_latex then
+    pending("no latex treesitter parser; run `make parsers`")
+    return true
+  end
+  return false
+end
+
+describe("scan (latex, treesitter)", function()
+  -- An `it`, not a top-level error(): plenary reports a spec file that fails
+  -- to load only as a non-zero exit, with no message saying why.
+  if vim.env.EQNAV_REQUIRE_LATEX == "1" then
+    it("has the latex parser (EQNAV_REQUIRE_LATEX=1)", function()
+      assert.is_true(has_latex, "the latex parser did not load; run `make parsers`")
+    end)
+  end
+
+  it("uses the treesitter backend for tex", function()
+    if skip_unless_latex() then
+      return
+    end
+    assert.are.equal("treesitter", scan.backend(helpers.buf("$x$", "tex")))
+  end)
+
+  it("finds display environments whole, and not figures or tables", function()
+    if skip_unless_latex() then
+      return
+    end
+    local bufnr = helpers.buf(
+      [[
+\begin{equation}
+  a = 1
+\end{equation}
+\begin{align}
+  b &= 2
+\end{align}
+\begin{gather}
+  c = 3
+\end{gather}
+\begin{multline}
+  d = 4
+\end{multline}
+\[ e = 5 \]
+\begin{figure}
+  \caption{not math}
+\end{figure}
+\begin{table}
+  \caption{not math either}
+\end{table}
+]],
+      "tex"
+    )
+    local eqs = treesitter.scan(bufnr)
+    local summary = vim.inspect(helpers.summary(eqs or {}))
+    assert.are.equal(5, #(eqs or {}), summary)
+    for i, env in ipairs({ "equation", "align", "gather", "multline" }) do
+      assert.are.equal(
+        1,
+        eqs[i].tex:find("\\begin{" .. env .. "}", 1, true),
+        env .. " should come back with its delimiters: " .. summary
+      )
+      assert.is_true(eqs[i].display, env)
+    end
+    assert.are.equal("e = 5", eqs[5].tex)
+  end)
+
+  -- The grammar makes aligned/split/array math environments in their own
+  -- right, so without nesting suppression each would be listed twice: once
+  -- inside its equation and once alone. Same rule the regex scanner applies.
+  it("indexes a nested environment once, as part of its enclosing one", function()
+    if skip_unless_latex() then
+      return
+    end
+    for _, inner in ipairs({
+      "\\begin{aligned} a &= b \\end{aligned}",
+      "\\begin{split} a &= b \\end{split}",
+      "f(x) = \\begin{cases} 1 & x > 0 \\end{cases}",
+      "\\text{if $x$}",
+    }) do
+      local eqs =
+        treesitter.scan(helpers.buf("\\begin{equation}\n  " .. inner .. "\n\\end{equation}", "tex"))
+      assert.are.equal(1, #eqs, inner .. ": " .. vim.inspect(helpers.summary(eqs)))
+      assert.are.equal(1, eqs[1].tex:find("\\begin{equation}", 1, true), inner)
+    end
+  end)
+
+  it("still indexes a standalone cases", function()
+    if skip_unless_latex() then
+      return
+    end
+    local eqs = treesitter.scan(helpers.buf("\\begin{cases}\na & b\n\\end{cases}", "tex"))
+    assert.are.equal(1, #eqs, vim.inspect(helpers.summary(eqs)))
+  end)
+
+  it("treats \\begin{math} as inline", function()
+    if skip_unless_latex() then
+      return
+    end
+    local eqs = treesitter.scan(helpers.buf("\\begin{math} x \\end{math}", "tex"))
+    assert.are.equal(1, #eqs)
+    assert.is_false(eqs[1].display)
+  end)
+
+  -- The two scanners must agree on the fixture that covers every environment
+  -- form, so neither path can drift from the other without a failure here.
+  it("agrees with the regex scanner on all-symbols.tex", function()
+    if skip_unless_latex() then
+      return
+    end
+    local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")
+    local text = table.concat(vim.fn.readfile(root .. "/tests/fixtures/all-symbols.tex"), "\n")
+    local ts = treesitter.scan(helpers.buf(text, "tex"))
+    local rx = regex.scan(helpers.buf(text, "text"))
+    assert.is_true(#rx > 40, "fixture scanned to only " .. #rx .. " equations")
+    assert.are.same(helpers.summary(rx), helpers.summary(ts))
+  end)
+end)
