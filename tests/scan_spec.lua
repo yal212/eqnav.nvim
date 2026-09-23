@@ -256,6 +256,29 @@ $inline$
   end)
 end)
 
+-- A parser that loads and a query that compiles can still capture nothing when
+-- the query is wrong -- which is exactly what #1 was. Regex is the cheaper side
+-- to be wrong on than an empty index with a healthy :checkhealth.
+describe("scan fallback", function()
+  local original = treesitter.scan
+  after_each(function()
+    treesitter.scan = original
+  end)
+
+  it("falls back to regex when treesitter captures nothing", function()
+    treesitter.scan = function()
+      return {}
+    end
+    local eqs = scan.scan(helpers.buf("$$x = 1$$", "markdown"))
+    assert.are.same(
+      { "x = 1" },
+      vim.tbl_map(function(e)
+        return e.tex
+      end, eqs)
+    )
+  end)
+end)
+
 describe("scan extmarks", function()
   it("keeps the jump target correct after lines are inserted above", function()
     local bufnr = helpers.buf("# T\n\n$$x = 1$$\n", "markdown")
