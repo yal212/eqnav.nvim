@@ -7,6 +7,8 @@
 A separate, prose-free page of your document's **rendered** equations. Walk it with
 `j`/`k`, press `<CR>`, and land on that equation in the source.
 
+![The eqnav index beside doc/demo.md: equations render in, j/k walks them, and Enter lands on one in the source](doc/demo.gif)
+
 ```
  eqnav · 7 equations · demo.md                     │  ## Observation
                                                    │
@@ -104,6 +106,16 @@ Make sure snacks has images on:
 | `:EqnavPick` | fuzzy-find an equation (telescope) |
 | `:EqnavExport [path]` | export to a self-contained HTML page and open it |
 | `:EqnavClearCache` | drop every cached render |
+
+<details>
+<summary>What <code>:EqnavExport</code> writes</summary>
+
+One HTML file with every equation rendered inline, a table of contents, and each
+equation's source and line. It follows the browser's light or dark preference.
+
+![The HTML export of doc/demo.md: a numbered list of rendered equations with their LaTeX source](doc/demo-export.png)
+
+</details>
 
 Inside the index:
 
