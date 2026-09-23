@@ -93,8 +93,11 @@ function M.scan(bufnr, opts)
     include_inline = config.options.include_inline
   end
 
+  -- Empty counts as a miss, not as "no math": a query that compiles but
+  -- captures nothing (#1) is otherwise an empty index with nothing reporting
+  -- a problem. A document that really has no math pays one wasted regex scan.
   local found = treesitter.scan(bufnr)
-  if not found then
+  if not found or #found == 0 then
     found = regex.scan(bufnr)
   end
 
