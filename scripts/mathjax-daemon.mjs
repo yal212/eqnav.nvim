@@ -126,7 +126,11 @@ async function boot() {
     // 'local' inlines the glyph <defs> into each SVG, which is what we need for
     // standalone files -- both rsvg-convert and the HTML export get a self
     // contained document with no shared cache to resolve.
-    svg: { fontCache: "local" },
+    //
+    // Inline breaks off. By default MathJax cuts inline math into one <svg> per
+    // place a line could break there, for a browser to wrap -- and render()
+    // keeps node.children[0], so `a+b+c` came back as a lone `a` (#46).
+    svg: { fontCache: "local", linebreaks: { inline: false } },
     startup: { typeset: false },
   });
   return MathJax;

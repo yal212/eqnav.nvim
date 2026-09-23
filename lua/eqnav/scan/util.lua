@@ -80,8 +80,9 @@ end
 --- The daemon's output format. It is in every cache key, so bump it whenever the
 --- daemon draws the same input differently -- otherwise a render cached before
 --- the change is served forever, bug included. 2: \tag rasterizing blank (#40)
---- and a repeated \label rendering as an error box (#15).
-M.RENDER_VERSION = 2
+--- and a repeated \label rendering as an error box (#15). 3: inline math cut
+--- off at its first possible line break (#46).
+M.RENDER_VERSION = 3
 
 --- Stable identity for an equation's rendered form. Anything that changes the
 --- pixels must be in here, or a stale image is served from cache.

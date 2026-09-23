@@ -251,6 +251,22 @@ async function run() {
       check(`one daemon session: ${what}`, r.ok && err === null, err);
     }
 
+    // Inline math is one <svg>, all of it. MathJax splits inline math at every
+    // place it could break, one <svg> each, and the daemon kept the first: this
+    // came back as a lone `a` (#46).
+    const INLINE = "a+b+c+d=e+f+g+h";
+    const il = await session([
+      { id: 1, equation: INLINE, display: false },
+      { id: 2, equation: INLINE, display: true },
+    ]);
+    const [inl, disp] = [1, 2].map((id) => il.get(id));
+    check(
+      "renders all of an inline equation",
+      inl.ok && Math.abs(inl.width - disp.width) < 1,
+      inl.ok ? `inline ${inl.width}ex, display ${disp.width}ex` : inl.err
+    );
+    check("renders inline math as one <svg>", inl.ok && inl.svg.match(/<svg/g).length === 1);
+
     if (!hasRsvg) console.log("  note: rsvg-convert not on PATH, rasterization checks skipped");
   } finally {
     await rm(dir, { recursive: true, force: true });
