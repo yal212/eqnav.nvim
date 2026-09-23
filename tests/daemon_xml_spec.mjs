@@ -16,15 +16,18 @@
 // currentColor attributes themselves.
 //
 // A \tag makes MathJax size the SVG as a percentage of its container (#40),
-// which rsvg-convert, with no container, drew as a blank 14x1 PNG.
+// which rsvg-convert, with no container, drew as a blank 14x1 PNG. And the
+// daemon is one long MathJax session, so a \label it had already seen came
+// back as a "multiply defined" error box on the next render of it (#15).
 //
 //   node tests/daemon_xml_spec.mjs
 //
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
@@ -69,6 +72,10 @@ const TAG_CASES = [
   "\\begin{align} a &= b \\tag{7} \\\\ c &= \\frac{d}{e} \\tag{8} \\end{align}",
 ];
 
+// Both fixtures carry this label, so opening one index and then the other sends
+// it down one daemon twice, as does `r` in the index (#15).
+const LABELLED = "\\begin{equation}\n  E = mc^2 \\label{eq:mass-energy}\n\\end{equation}";
+
 const hasRsvg = spawnSync("rsvg-convert", ["--version"], { stdio: "ignore" }).status === 0;
 
 // Return an offending attribute value if any attribute holds a raw < or >, or an
@@ -104,6 +111,30 @@ function errorBox(svg) {
 async function pngSize(file) {
   const buf = await readFile(file);
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+
+// Send requests down one daemon session and collect the responses by id.
+// Rejects rather than hangs if the daemon stops answering.
+function session(requests, ms = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("node", [daemon, "--daemon"], { stdio: ["pipe", "pipe", "ignore"] });
+    const out = new Map();
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`daemon timed out after ${ms}ms`)); }, ms);
+    createInterface({ input: child.stdout }).on("line", (line) => {
+      const r = JSON.parse(line);
+      if (r.ready) {
+        for (const q of requests) child.stdin.write(JSON.stringify(q) + "\n");
+        return;
+      }
+      out.set(r.id, r);
+      if (out.size === requests.length) {
+        clearTimeout(timer);
+        child.stdin.end();
+        resolve(out);
+      }
+    });
+    child.on("error", (e) => { clearTimeout(timer); reject(e); });
+  });
 }
 
 let failures = 0;
@@ -203,6 +234,21 @@ async function run() {
         const { w, h } = await pngSize(png);
         check(`rasterizes ${JSON.stringify(eq)} to a visible size`, w >= 50 && h >= 10, `${w}x${h}`);
       }
+    }
+
+    // Twice the same label, then a macro the preamble defined: the label must
+    // not be a redefinition the second time, and whatever clears it must leave
+    // the preamble's \newcommand in place.
+    const preamble = "\\newcommand{\\eqnavtest}{Q}";
+    const res = await session([
+      { id: 1, equation: LABELLED, display: true, preamble },
+      { id: 2, equation: LABELLED, display: true, preamble },
+      { id: 3, equation: "\\eqnavtest", display: true, preamble },
+    ]);
+    for (const [id, what] of [[1, "labelled equation"], [2, "same label again"], [3, "preamble macro after both"]]) {
+      const r = res.get(id);
+      const err = r.ok ? errorBox(r.svg) || undefinedMacro(r.svg) : r.err;
+      check(`one daemon session: ${what}`, r.ok && err === null, err);
     }
 
     if (!hasRsvg) console.log("  note: rsvg-convert not on PATH, rasterization checks skipped");

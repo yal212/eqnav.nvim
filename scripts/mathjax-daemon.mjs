@@ -214,6 +214,12 @@ function colorize(xml, color) {
 // call simply throws, so \mathbb{R} never rendered at all.
 async function render(equation, { display = false, color = null, preamble = null, ex = 8 } = {}) {
   await applyPreamble(preamble);
+  // One MathJax session serves every request, and its \label registry would
+  // otherwise last as long: the second render of a labelled equation, from `r`
+  // in the index or another document with the same label, came back as a
+  // "Label multiply defined" error box (#15). texReset clears labels and tag
+  // numbering only; the \newcommands applyPreamble installed survive it.
+  MathJax.texReset();
   const node = await MathJax.tex2svgPromise(equation, { display, ex: MJ_EX, em: 2 * MJ_EX });
   const adaptor = MathJax.startup.adaptor;
   const svg = node.children[0];
