@@ -216,6 +216,7 @@ function M.export_and_open(path)
   -- At the width the index rendered for, when these are its equations:
   -- render_all writes each key into the equation, and any other width re-keyed
   -- the index's under it, dropping its renders still in flight as stale.
+  -- Regardless of render.enabled, which governs the terminal view (#47).
   require("eqnav.render").render_all(equations, function()
     done = done + 1
     if done >= #equations then

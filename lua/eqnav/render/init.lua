@@ -45,6 +45,10 @@ end
 --- The callback's `id` is the equation's content hash as it was when the render
 --- started, so a caller can tell a result that is still wanted from one whose
 --- equation has since been edited away. See view.set_image.
+---
+--- It renders whatever it is given: `render.enabled` is the caller's to check.
+--- The index does, but the export renders regardless (#47), since it is the
+--- escape hatch for a terminal that cannot show images.
 ---@param equations eqnav.Equation[]
 ---
 --- `opts.width` is the index's width in columns. Display math wider than that
@@ -55,7 +59,7 @@ end
 ---@param opts? { force?: boolean, width?: integer }
 function M.render_all(equations, cb, opts)
   opts = opts or {}
-  if not config.options.render.enabled or #equations == 0 then
+  if #equations == 0 then
     return
   end
 
@@ -168,6 +172,12 @@ end
 ---@param eq eqnav.Equation
 ---@param cb fun(png: string|nil, err: string|nil)
 function M.render_one(eq, cb)
+  if not config.options.render.enabled then
+    vim.schedule(function()
+      cb(nil, "rendering disabled")
+    end)
+    return
+  end
   M.render_all({ eq }, function(_, png, err)
     cb(png, err)
   end)

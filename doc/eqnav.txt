@@ -98,7 +98,8 @@ so listing only `tex` misses some of them.
                         math is broken over lines as it is in the index.
                         It follows the reader's light/dark preference and
                         needs no network. With no [path], writes into the
-                        cache directory.
+                        cache directory. Equations the index has not rendered
+                        are rendered first, even with `render.enabled = false`.
 
                                                             *:EqnavClearCache*
 :EqnavClearCache        Remove every cached render.
