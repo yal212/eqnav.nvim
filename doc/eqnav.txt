@@ -240,7 +240,10 @@ Scanning prefers treesitter~
     what keeps `$x$` inside a fenced code block out of the index: the fence is
     injected as its own language, so it is never part of the math tree. Where
     no parser is installed, eqnav falls back to delimiter matching, which
-    cannot see fences as reliably. `:checkhealth eqnav` says which is in use.
+    cannot see fences as reliably. Delimiter matching also runs when the
+    treesitter scan finds nothing, so a query that misses a construct shows
+    up as a slower scan rather than an empty index. `:checkhealth eqnav`
+    says which is in use.
 
 Positions are extmarks~
     Each equation is anchored to an extmark in the source buffer, so jump
@@ -286,6 +289,8 @@ An equation renders as a red error box~
 
 Math is missed in a .tex file~
     Install the parser: `:TSInstall latex`. Without it eqnav uses the regex
-    scanner.
+    scanner, which cannot see `verbatim` and other non-math blocks the way
+    treesitter does. `:checkhealth eqnav` shows which parser each filetype
+    uses.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

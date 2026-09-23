@@ -208,9 +208,15 @@ sandboxed harness that never reads your own config:
 
 ```
 make demo        # markdown fixture, treesitter scanner
-make demo-tex    # LaTeX fixture, regex scanner + preamble macros
+make demo-tex    # LaTeX fixture + preamble macros (see below for the scanner)
 make demo-cold   # as demo, but with a throwaway render cache
 ```
+
+`make parsers` builds the `latex` treesitter parser into `.tests/`, pinned to
+the revision `:TSInstall latex` installs. It needs the `tree-sitter` CLI and a
+C compiler. With it, `demo-tex` and the test suite use the treesitter scanner
+for `.tex`, as CI does. Without it, they fall back to the regex scanner and
+the LaTeX treesitter specs report as pending.
 
 Each opens `tests/fixtures/all-symbols.*` — every symbol family and every
 MathJax package the daemon loads, one display equation per row — in a Neovim
