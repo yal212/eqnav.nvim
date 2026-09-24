@@ -232,12 +232,15 @@ Tests, the sandboxed demo harness and the commit conventions are in
 
 ## Credits
 
-[`latex-preview.nvim`][latexpreview], whose design the MathJax daemon follows:
-
-- A long-lived process speaking newline-delimited JSON.
-- `adaptor.serializeXML` rather than `innerHTML`. Its author worked out that MathJax 4
-  writes raw TeX into `data-latex` attributes, and that `rsvg-convert` rejects the
-  resulting invalid XML. That saved a long afternoon.
+- [MathJax][mathjax], which renders every equation, in the index and in the export.
+- [snacks.nvim][snacks], which draws them in the terminal.
+- [image.nvim][imagenvim], which draws them too, and reaches terminals without native
+  graphics through ueberzug++.
+- [`latex-preview.nvim`][latexpreview], whose design the MathJax daemon follows:
+  - A long-lived process speaking newline-delimited JSON.
+  - `adaptor.serializeXML` rather than `innerHTML`. Its author worked out that
+    MathJax 4 writes raw TeX into `data-latex` attributes, and that `rsvg-convert`
+    rejects the resulting invalid XML. That saved a long afternoon.
 
 ## License
 
@@ -248,6 +251,7 @@ MIT
 [latexpreview]: https://github.com/sonv/latex-preview.nvim
 [nabla]: https://github.com/jbyuki/nabla.nvim
 [neorg]: https://github.com/nvim-neorg/neorg
+[mathjax]: https://www.mathjax.org/
 [snacks]: https://github.com/folke/snacks.nvim
 [imagenvim]: https://github.com/3rd/image.nvim
 [lazy]: https://github.com/folke/lazy.nvim
