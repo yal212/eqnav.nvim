@@ -232,11 +232,12 @@ Tests, the sandboxed demo harness and the commit conventions are in
 
 ## Credits
 
-The MathJax daemon's architecture — a long-lived process speaking newline-delimited JSON,
-and crucially the use of `adaptor.serializeXML` rather than `innerHTML` — follows
-[`latex-preview.nvim`][latexpreview], whose author worked out that MathJax 4 writes raw
-TeX into `data-latex` attributes and that `rsvg-convert` rejects the resulting invalid
-XML. That saved a long afternoon.
+[`latex-preview.nvim`][latexpreview], whose design the MathJax daemon follows:
+
+- A long-lived process speaking newline-delimited JSON.
+- `adaptor.serializeXML` rather than `innerHTML`. Its author worked out that MathJax 4
+  writes raw TeX into `data-latex` attributes, and that `rsvg-convert` rejects the
+  resulting invalid XML. That saved a long afternoon.
 
 ## License
 
