@@ -3,11 +3,11 @@ local util = require("eqnav.scan.util")
 
 --- Export the equation index as one self-contained HTML page.
 ---
---- wishlist#51 asked for this directly -- "I preferred HTML or PDF output" --
---- and it is also the escape hatch for terminals with no graphics at all. The
---- SVGs are the ones already rendered for the terminal view, so the page costs
---- nothing extra and matches what you were just looking at -- display math
---- broken over lines to fit the index included.
+--- It is a shareable copy of the index, and the escape hatch for terminals
+--- with no graphics at all. The SVGs are the ones already rendered for the
+--- terminal view, so the page costs nothing extra and matches what you were
+--- just looking at -- display math broken over lines to fit the index
+--- included.
 local M = {}
 
 local function escape(s)

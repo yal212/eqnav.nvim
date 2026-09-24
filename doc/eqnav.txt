@@ -25,10 +25,10 @@ document, rendered as an image, with the prose stripped out. You move through
 it equation by equation with `j` and `k`, and `<CR>` takes you to that
 equation's line in the source.
 
-It implements nvim-lua/wishlist issue #51. The problem it solves is
-context-switch cost: finding an equation by jumping around the document means
-alternating between prose and math, and each alternation costs a refocus
-before you can judge whether you have found the right one.
+The problem it solves is context-switch cost: finding an equation by jumping
+around the document means alternating between prose and math, and each
+alternation costs a refocus before you can judge whether you have found the
+right one.
 
 Neovim already has good inline and hover math preview. eqnav does not compete
 with those; it is only the indexed view and the jump back.

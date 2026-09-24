@@ -27,17 +27,10 @@ A separate, prose-free page of your document's **rendered** equations. Walk it w
 
 ## Why
 
-This implements [nvim-lua/wishlist#51](https://github.com/nvim-lua/wishlist/issues/51),
-open since 2023. The request was specific:
-
-> a separate page just for equations, like being able to j/k up and down the rendered
-> equations without the text around … links that allow going from the equations page to
-> the location of the equation in the original page
-
-The motivation is context-switch cost. Hunting for an equation by jumping through the
-document means bouncing between prose and math, and every bounce costs a refocus before
-you can decide *"no, not that one."* An index with the prose stripped out is faster to
-scan than the document is.
+Context-switch cost. Hunting for an equation by jumping through the document means
+bouncing between prose and math, and every bounce costs a refocus before you can decide
+*"no, not that one."* An index with the prose stripped out is faster to scan than the
+document is.
 
 Neovim already has excellent **inline** math preview:
 
@@ -78,7 +71,7 @@ With [lazy.nvim][lazy]. The `build` step installs MathJax into the plugin direct
   "yal212/eqnav.nvim",
   build = "npm install",
   dependencies = {
-    "folke/snacks.nvim",      -- optional: renders equations as images
+    "folke/snacks.nvim",             -- optional: renders equations as images
     "nvim-telescope/telescope.nvim", -- optional: :EqnavPick
   },
   -- Must cover `filetypes` below: `ft` decides whether eqnav loads at all.
@@ -261,14 +254,10 @@ and crucially the use of `adaptor.serializeXML` rather than `innerHTML` — foll
 TeX into `data-latex` attributes and that `rsvg-convert` rejects the resulting invalid
 XML. That saved a long afternoon.
 
-Thanks to `userrand` for [the original request][issue] and to `benlubas` for the neorg
-renderer work discussed in that thread.
-
 ## License
 
 MIT
 
-[issue]: https://github.com/nvim-lua/wishlist/issues/51
 [mdmath]: https://github.com/Thiago4532/mdmath.nvim
 [renderlatex]: https://github.com/techwizrd/render-latex.nvim
 [latexpreview]: https://github.com/sonv/latex-preview.nvim

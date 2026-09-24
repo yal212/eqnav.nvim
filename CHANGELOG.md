@@ -23,8 +23,7 @@ All notable changes to eqnav.nvim are recorded here. The format follows
 
 ## [0.1.0] - 2026-09-24
 
-The first release: an index of a document's rendered equations, as asked for in
-[nvim-lua/wishlist#51](https://github.com/nvim-lua/wishlist/issues/51).
+The first release: an index of a document's rendered equations.
 
 ### Added
 

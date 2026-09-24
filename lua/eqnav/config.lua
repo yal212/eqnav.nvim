@@ -10,7 +10,7 @@ local defaults = {
   filetypes = { "markdown", "quarto", "rmd", "tex", "latex", "plaintex" },
 
   -- Index inline math ($x$) as well as display math ($$..$$).
-  -- Off by default on purpose: wishlist#51 is about escaping noise, and a
+  -- Off by default on purpose: the index is about escaping noise, and a
   -- document's inline math is mostly single symbols that re-create it.
   include_inline = false,
 

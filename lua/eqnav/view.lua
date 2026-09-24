@@ -578,8 +578,7 @@ local function set_keymaps(buf)
     end
   end
   -- j/k move equation-to-equation rather than line-to-line. There is no prose
-  -- in this buffer, so a line is the wrong unit of travel -- this is the
-  -- navigation wishlist#51 actually asked for.
+  -- in this buffer, so a line is the wrong unit of travel.
   map(keys.next, M.next, "eqnav: next equation")
   map(keys.prev, M.prev, "eqnav: previous equation")
   map(keys.jump, function()

@@ -2,8 +2,8 @@ local config = require("eqnav.config")
 
 --- eqnav.nvim -- a rendered-equation index for Neovim.
 ---
---- Answers nvim-lua/wishlist#51: a separate, prose-free page of the document's
---- equations that you navigate with j/k and jump back from with <CR>.
+--- A separate, prose-free page of the document's equations that you navigate
+--- with j/k and jump back from with <CR>.
 local M = {}
 
 M.config = config
