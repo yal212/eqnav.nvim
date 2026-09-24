@@ -20,6 +20,10 @@
 // daemon is one long MathJax session, so a \label it had already seen came
 // back as a "multiply defined" error box on the next render of it (#15).
 //
+// An error box has to be readable when it does appear. MathJax leaves its
+// colours to a stylesheet no rasterizer here has, so the daemon writes them in
+// (#62).
+//
 //   node tests/daemon_xml_spec.mjs
 //
 import { execFile, spawn, spawnSync } from "node:child_process";
@@ -71,6 +75,12 @@ const TAG_CASES = [
   "x = y \\tag{$\\ast$}",
   "\\begin{align} a &= b \\tag{7} \\\\ c &= \\frac{d}{e} \\tag{8} \\end{align}",
 ];
+
+// A parse error is an <merror>: a background rect and the source as <text>,
+// neither with a fill of its own. A browser colours them from MathJax's
+// stylesheet; a standalone rasterizer has none, so both took the root fill and
+// came out as one solid block (#62). tests/fixtures/all-symbols.md's.
+const ERROR_CASES = ["\\frac{a}"];
 
 // Both fixtures carry this label, so opening one index and then the other sends
 // it down one daemon twice, as does `r` in the index (#15).
@@ -233,6 +243,42 @@ async function run() {
         await execFileP("rsvg-convert", ["-o", png, out]);
         const { w, h } = await pngSize(png);
         check(`rasterizes ${JSON.stringify(eq)} to a visible size`, w >= 50 && h >= 10, `${w}x${h}`);
+      }
+    }
+
+    for (const eq of ERROR_CASES) {
+      const tex = path.join(dir, `error${i}.tex`);
+      const out = path.join(dir, `error${i}.svg`);
+      const png = path.join(dir, `error${i}.png`);
+      i++;
+      await writeFile(tex, eq, "utf8");
+      await execFileP("node", [daemon, "--in", tex, "--out", out, "--display", "--color", COLOR]);
+      const svg = await readFile(out, "utf8");
+
+      check(`renders ${JSON.stringify(eq)} as an error box`, errorBox(svg) !== null, svg.slice(0, 80));
+      const merror = /<g data-mml-node="merror"[^>]*>/.exec(svg);
+      const fill = merror && /\sfill="([^"]*)"/.exec(merror[0]);
+      check(
+        `gives the error in ${JSON.stringify(eq)} a colour of its own`,
+        fill && fill[1] !== `#${COLOR}`,
+        merror ? merror[0].slice(0, 120) : "no merror"
+      );
+      const rect = /<rect data-background="true"[^>]*>/.exec(svg);
+      check(
+        `sets the error box in ${JSON.stringify(eq)} apart from its text`,
+        rect && /\sfill-opacity="/.test(rect[0]),
+        rect ? rect[0] : "no background rect"
+      );
+
+      if (hasRsvg) {
+        let rasterOk = true, err = "";
+        try {
+          await execFileP("rsvg-convert", ["-o", png, out]);
+        } catch (e) {
+          rasterOk = false;
+          err = String(e.stderr || e.message).trim().slice(0, 120);
+        }
+        check(`rsvg-convert accepts the error ${JSON.stringify(eq)}`, rasterOk, err);
       }
     }
 

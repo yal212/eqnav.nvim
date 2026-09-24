@@ -8,6 +8,10 @@ All notable changes to eqnav.nvim are recorded here. The format follows
 
 ### Fixed
 
+- A TeX parse error such as `\frac{a}` rendered as a solid block with no
+  readable text: its box and its text were both drawn in the foreground
+  colour. The error is now red text on a translucent red box, in the index and
+  in the export (#62).
 - The image.nvim backend drew every image at the left of the screen, over the
   source, and left it there when the index scrolled. It also hung its own
   blank rows under each image, on top of the ones eqnav reserves. Images now

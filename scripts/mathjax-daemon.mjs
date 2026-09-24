@@ -213,6 +213,32 @@ function colorize(xml, color) {
   return xml.replace(/(fill|stroke)="currentColor"/g, `$1="${hex}"`);
 }
 
+// Give a parse error's box and text colours of their own. MathJax draws an
+// <merror> as a background rect and the source as <text>, both unfilled, and
+// leaves their colours to its stylesheet -- which a browser has and a
+// standalone rasterizer does not. Without one both inherit the root fill that
+// colorize() sets to the foreground, and `\frac{a}` came out as a solid block
+// with nothing readable in it (#62).
+//
+// Red, as `noundefined` draws an unknown macro, on a translucent red box that
+// reads on dark and light schemes alike. Named, not hex: export/html.lua hands
+// every #rrggbb back to CSS, and an error should stay red in the page too.
+// Only an merror's own rect -- \colorbox and bbox draw data-background rects
+// with colours the author chose.
+function markErrors(adaptor, node) {
+  if (adaptor.kind(node) === "#text") return;
+  if (adaptor.getAttribute(node, "data-mml-node") === "merror") {
+    adaptor.setAttribute(node, "fill", "red");
+    adaptor.setAttribute(node, "stroke", "red");
+    for (const child of adaptor.childNodes(node)) {
+      if (adaptor.kind(child) === "rect" && adaptor.getAttribute(child, "data-background")) {
+        adaptor.setAttribute(child, "fill-opacity", "0.2");
+      }
+    }
+  }
+  for (const child of adaptor.childNodes(node)) markErrors(adaptor, child);
+}
+
 // tex2svgPromise, not tex2svg: @mathjax/mathjax-newcm-font fetches most of its
 // glyph ranges on demand (double-struck, fraktur, calligraphic, monospace,
 // sans-serif, ...) and \require{..} loads a package mid-render. Both raise
@@ -239,6 +265,7 @@ async function render(equation, { display = false, color = null, preamble = null
   const adaptor = MathJax.startup.adaptor;
   const svg = node.children[0];
   const dims = stampPixelSize(adaptor, svg, ex);
+  markErrors(adaptor, svg);
   return { svg: colorize(adaptor.serializeXML(svg), color), ...dims };
 }
 

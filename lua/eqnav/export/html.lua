@@ -20,6 +20,8 @@ end
 --- foreground baked in, which would be wrong in a browser that follows the
 --- reader's light/dark preference; MathJax already marks the outer group
 --- `currentColor`, so neutralising the explicit fills is enough.
+--- Only #rrggbb is rewritten: named colours -- `noundefined`'s red for an
+--- unknown macro, the daemon's red for a parse error (#62) -- stay as they are.
 ---@param svg string
 local function themeable(svg)
   svg = svg:gsub('(fill=")#%x%x%x%x%x%x(")', "%1currentColor%2")

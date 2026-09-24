@@ -412,6 +412,22 @@ describe("render pipeline", function()
     assert.is_truthy(page, "export never finished")
     assert.is_truthy(page:find("<svg", 1, true), "export did not render")
   end)
+
+  -- The daemon colours a parse error itself, since no rasterizer has MathJax's
+  -- stylesheet (#62). The export hands the foreground back to CSS; the error's
+  -- red has to come through that as red.
+  it("keeps a parse error red in the export", function()
+    if not has_node then
+      pending("node or @mathjax/src unavailable")
+      return
+    end
+    require("eqnav").setup({ render = { color = "e0def4" } })
+    local page = export("$$\\frac{a_{" .. vim.uv.hrtime() .. "}}$$")
+    assert.is_truthy(page, "export never finished")
+    local merror = page:match('<g data%-mml%-node="merror"[^>]*>')
+    assert.is_truthy(merror, "no error box in the page")
+    assert.is_truthy(merror:find('fill="red"', 1, true), merror)
+  end)
 end)
 
 --- Every chunk of a PNG file, in order, as { type, data, crc_ok }.
