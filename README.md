@@ -9,22 +9,6 @@ A separate, prose-free page of your document's **rendered** equations. Walk it w
 
 ![The eqnav index beside doc/demo.md: equations render in, j/k walks them, and Enter lands on one in the source](doc/demo.gif)
 
-```
- eqnav · 7 equations · demo.md                     │  ## Observation
-                                                   │
-   1  Setup                                L13     │  The generator advances by one
-      s_t ∈ ℤ_M = {0, 1, …, M − 1}                 │  multiply and one add:
-                                                   │
-   2  Observation                          L25     │  $$
-      s_{t+1} ≡ s_t · A + B  (mod M)               │  s_{t+1} \equiv s_t \cdot A + B
-                                                   │  $$
-   3  Observation                          L32     │
-      gcd(A, M) = 1                                │  which means we can walk it
-                                                   │  backwards, as long as…
-   4  Action                               L43     │
-      s_t ≡ (s_{t+1} − B) · A⁻¹  (mod M)           │
-```
-
 ## Why
 
 Context-switch cost. Hunting for an equation by jumping through the document means
