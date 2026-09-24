@@ -42,6 +42,10 @@ end
 ---@field cell_width number device px
 ---@field cell_height number device px
 ---@field scale number device px per CSS px
+--- The backend draws an image in the rows it is asked for and works out the
+--- columns from the image's aspect ratio, rounding up (image.nvim). M.box then
+--- sizes the canvas for that rounding rather than snacks'.
+---@field keeps_height? boolean
 
 --- The canvas an image of `w` x `h` device px is padded onto: a whole number of
 --- terminal cells on each axis (#17).
@@ -54,19 +58,41 @@ end
 --- rows), and a canvas must be whole px. Flooring n cells keeps snacks' ceil()
 --- on the same n; the bump makes sure flooring never crops the image's last
 --- pixel row, which the rasterizer rounds up.
+---
+--- image.nvim is handed the box (`keeps_height`), keeps its rows, and takes the
+--- columns as ceil(rows * cell_height * aspect / cell_width). A canvas exactly
+--- the box's aspect makes that the ceil of a whole number, which floating point
+--- can push one column over (#54). So the height is ceil(n cells), which rounds
+--- back to n, and the width a quarter to one and a quarter px under the box's
+--- aspect, which makes the columns come out a hair under m and ceil to m.
 ---@param w number
 ---@param h number
 ---@param geom eqnav.Geometry
 ---@return eqnav.RasterBox
 function M.box(w, h, geom)
-  local function fit(len, cell)
+  local function cells(len, cell)
     local n = math.max(1, math.ceil(len / cell))
     if math.floor(n * cell) < math.ceil(len) then
       n = n + 1
     end
-    return math.floor(n * cell)
+    return n
   end
-  local width, height = fit(w, geom.cell_width), fit(h, geom.cell_height)
+  local width, height
+  if geom.keeps_height then
+    local cw, ch = geom.cell_width, geom.cell_height
+    local n = math.max(1, math.ceil(h / ch))
+    height = math.ceil(n * ch)
+    local m = math.max(1, math.ceil(w / cw))
+    repeat
+      -- The width of exactly the box's aspect at this height.
+      local exact = height * m * cw / (n * ch)
+      width = math.ceil(exact - 0.25) - 1
+      m = m + 1
+    until width >= math.ceil(w)
+  else
+    width = math.floor(cells(w, geom.cell_width) * geom.cell_width)
+    height = math.floor(cells(h, geom.cell_height) * geom.cell_height)
+  end
   return {
     width = width,
     height = height,

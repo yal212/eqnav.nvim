@@ -545,6 +545,25 @@ describe("cell-aligned rasterization", function()
     local b = util.hash("x", true, "e0def4", 9, { cell_width = 20, cell_height = 44, scale = 2.5 })
     assert.are_not.equal(a, b)
     assert.are_not.equal(a, util.hash("x", true, "e0def4", 9))
+    -- The same cells padded for image.nvim's rounding are a different PNG, so
+    -- switching backends must not serve snacks' render to image.nvim.
+    local c =
+      util.hash("x", true, "e0def4", 9, vim.tbl_extend("force", geom, { keeps_height = true }))
+    assert.are_not.equal(a, c)
+  end)
+
+  -- image.nvim keeps the rows it is given and works the columns out from the
+  -- aspect (#54): the canvas is ceil(n cells) tall, a hair over n, and a
+  -- fraction of a px under the box's aspect wide. The exact round trip through
+  -- image.nvim's own arithmetic is pinned in image_nvim_spec.lua.
+  it("pads for image.nvim's rounding when the geometry asks for it", function()
+    local g = { cell_width = 9.5, cell_height = 44.8, scale = 1, keeps_height = true }
+    local b = raster.box(30, 50, g)
+    assert.are.equal(90, b.height) -- ceil(2 * 44.8)
+    assert.is_true(b.width >= 30, "box cuts off the image: " .. b.width)
+    -- Just under 4 columns at this height's aspect: 4 * 9.5 * 90 / 89.6 = 38.17
+    assert.are.equal(37, b.width)
+    assert.are.equal(20, b.top)
   end)
 
   it("keys the cache on the index width, and only when there is one", function()

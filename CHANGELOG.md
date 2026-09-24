@@ -6,6 +6,17 @@ All notable changes to eqnav.nvim are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The image.nvim backend drew every image at the left of the screen, over the
+  source, and left it there when the index scrolled. It also hung its own
+  blank rows under each image, on top of the ones eqnav reserves. Images now
+  sit on their entry's rows in the index window and scroll with it (#60).
+- The image.nvim backend drew most images a row shorter than eqnav reserved,
+  squashed to fit, and shrank tall ones to half the window. Equations are now
+  rendered at the display's density and padded to the cells image.nvim draws,
+  and shown 1:1 in exactly the rows reserved (#54).
+
 ## [0.1.0] - 2026-09-24
 
 The first release: an index of a document's rendered equations, as asked for in
