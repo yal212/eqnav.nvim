@@ -73,10 +73,10 @@ describe("snacks backend", function()
     if skip_unless_snacks() then
       return
     end
-    local png =
-      vim.fn.glob(vim.fs.joinpath(vim.fn.stdpath("cache"), "eqnav", "*.png"), false, true)[1]
+    -- Made here, not found in the render cache: CI's cache is always cold, and
+    -- a test that needs another spec to have run first never runs there (#56).
+    local png = helpers.make_png(64, 32)
     if not png then
-      pending("no cached render to place; run the render specs first")
       return
     end
     local buf = helpers.buf("\n\n\n", "markdown")
@@ -91,19 +91,16 @@ describe("snacks backend", function()
     assert.is_true(created, "snacks rejected eqnav's placement opts: " .. tostring(err))
   end)
 
-  it("converts a real PNG's height into a sane number of buffer lines", function()
+  it("converts a real PNG's height into the rows it is drawn in", function()
     if skip_unless_snacks() then
       return
     end
-    local png =
-      vim.fn.glob(vim.fs.joinpath(vim.fn.stdpath("cache"), "eqnav", "*.png"), false, true)[1]
+    local g = backend.geometry()
+    local png = helpers.make_png(64, math.ceil(3 * g.cell_height))
     if not png then
-      pending("no cached render available")
       return
     end
-    local rows = backend.rows({ tex = "x", display = true, index = 1 }, png, 60)
-    assert.is_number(rows)
-    assert.is_true(rows >= 1 and rows < 100, "implausible row count: " .. tostring(rows))
+    assert.are.equal(3, backend.rows({ tex = "x", display = true, index = 1 }, png, 60))
   end)
 
   -- snacks shrinks an image wider than the window to fit it, keeping its aspect,
@@ -161,14 +158,22 @@ describe("snacks backend", function()
   it("reads PNG dimensions straight from the IHDR", function()
     -- The fallback path when snacks' own dim() is unavailable. A PNG stores
     -- width and height as big-endian u32 at bytes 17-24.
-    local png =
-      vim.fn.glob(vim.fs.joinpath(vim.fn.stdpath("cache"), "eqnav", "*.png"), false, true)[1]
+    local g = backend.geometry()
+    local png = helpers.make_png(64, math.ceil(3 * g.cell_height))
     if not png then
-      pending("no cached render available")
       return
     end
-    local rows = backend.rows({ tex = "x", display = true, index = 1 }, png, 60)
-    assert.is_true(rows >= 1)
+    local util = available and snacks.image.util or nil
+    local dim = util and util.dim
+    if util then
+      util.dim = nil
+    end
+    local called, rows = pcall(backend.rows, { tex = "x", display = true, index = 1 }, png, 60)
+    if util then
+      util.dim = dim
+    end
+    assert.is_true(called, tostring(rows))
+    assert.are.equal(3, rows)
     -- and a non-PNG must not crash it
     assert.is_number(backend.rows({ tex = "x" }, "/definitely/not/a/file.png", 60))
   end)
