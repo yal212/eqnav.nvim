@@ -99,7 +99,13 @@ function M.hash(tex, display, color, ex, geom, width)
     tostring(display),
     color or "-",
     tostring(ex),
-    geom and string.format("%sx%s@%s", geom.cell_width, geom.cell_height, geom.scale) or "-",
+    geom and string.format(
+      "%sx%s@%s%s",
+      geom.cell_width,
+      geom.cell_height,
+      geom.scale,
+      geom.keeps_height and "h" or ""
+    ) or "-",
   }
   -- Only when there is one, so a render with no width -- the HTML export's --
   -- keeps the key it always had.

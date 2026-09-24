@@ -25,6 +25,15 @@ local function skip_unless_image()
   return false
 end
 
+--- `bufnr`, shown in the current window: place() draws into the window
+--- showing the index, and there is none for a buffer nobody is looking at.
+---@param bufnr integer
+---@return integer bufnr
+local function shown(bufnr)
+  vim.api.nvim_win_set_buf(0, bufnr)
+  return bufnr
+end
+
 local did_setup = false
 local function setup()
   if not did_setup then
@@ -82,7 +91,7 @@ describe("image.nvim backend, before setup()", function()
     end
     -- 17px is the fallback cell height, and what headless always gets.
     local size = available and require("image/utils/term").get_size()
-    local expected = size and math.ceil(4 * 17 / size.cell_height) or 4
+    local expected = size and math.max(1, math.floor(4 * 17 / size.cell_height + 0.5)) or 4
     assert.are.equal(expected, backend.rows({ tex = "x" }, file, 60))
   end)
 end)
@@ -149,7 +158,7 @@ describe("image.nvim backend, after setup()", function()
     if not (first and second) then
       return
     end
-    local buf = helpers.buf("\n\n\n\n", "markdown")
+    local buf = shown(helpers.buf("\n\n\n\n", "markdown"))
     local a = backend.place(buf, 2, { tex = "x" }, first)
     assert.is_truthy(a, "image.nvim rejected eqnav's from_file opts")
     assert.is_function(a.render)
@@ -162,5 +171,162 @@ describe("image.nvim backend, after setup()", function()
     assert.has_no.errors(function()
       backend.clear(buf)
     end)
+  end)
+end)
+
+-- The renderer pads each PNG to whole cells of geometry() and renders it at
+-- the display's density, as it does for snacks (#6, #17). Without geometry()
+-- the PNGs were unpadded and 1x, and image.nvim drew them a row short (#54).
+describe("image.nvim backend geometry", function()
+  it("reports the geometry the renderer pads images to", function()
+    local g = backend.geometry()
+    assert.is_table(g)
+    assert.is_true(g.cell_width > 0 and g.cell_height > 0, vim.inspect(g))
+    assert.is_true(g.scale >= 1, vim.inspect(g))
+  end)
+
+  -- eqnav hands image.nvim the box itself, and image.nvim keeps its rows and
+  -- works the columns out from the PNG's aspect. It draws exactly that box when
+  -- its aspect-ratio pass gives the box back unchanged, which is what this pins,
+  -- on the canvases raster.box makes for it. Fractional cells are the case that
+  -- matters: image.nvim's cell is the window's pixel size over its rows. Whole
+  -- ones are the other: a canvas of exactly the box's aspect came back a column
+  -- wider, floating point pushing a whole number over its ceil().
+  it("gets back from image.nvim exactly the box eqnav reserves", function()
+    if skip_unless_image() then
+      return
+    end
+    local adjust = require("image/utils/math").adjust_to_aspect_ratio
+    local raster = require("eqnav.render.raster")
+    for _, cell in ipairs({ { 20, 45 }, { 9.5, 44.8 }, { 8, 17 }, { 16, 32 }, { 7.3, 15.6 } }) do
+      local cw, ch = cell[1], cell[2]
+      local geom = { cell_width = cw, cell_height = ch, scale = 1, keeps_height = true }
+      for w = 3, 900, 29 do
+        for h = 1, 200, 7 do
+          local ctx = vim.inspect({ cell = cell, w = w, h = h })
+          local box = raster.box(w, h, geom)
+          assert.is_true(box.width >= math.ceil(w) and box.height >= math.ceil(h), ctx)
+          -- The rows the equation needs, and the columns, or one more when the
+          -- width is within a px of a whole column.
+          local n = math.floor(box.height / ch + 0.5)
+          local m = math.ceil(n * ch * (box.width / box.height) / cw)
+          assert.are.equal(math.max(1, math.ceil(h / ch)), n, ctx)
+          assert.is_true(m * cw >= w and m <= math.max(1, math.ceil(w / cw)) + 1, ctx)
+          local aw, ah = adjust(geom, box.width, box.height, m, n)
+          assert.are.same({ m, n }, { aw, ah }, ctx)
+        end
+      end
+    end
+  end)
+
+  it("reserves the whole cells a padded PNG covers", function()
+    local g = backend.geometry()
+    local box = require("eqnav.render.raster").box(40, 2.4 * g.cell_height, g)
+    local file = helpers.make_png(box.width, box.height)
+    if not file then
+      return
+    end
+    assert.are.equal(3, backend.rows({ tex = "x" }, file, 60))
+    assert.is_false(backend.overflows(file, 60))
+  end)
+
+  -- Wider than the index, the image is drawn narrower, keeping its aspect, so it
+  -- takes fewer rows. The number is image.nvim's own.
+  it("reserves the rows an over-wide image is drawn in", function()
+    local g = backend.geometry()
+    local box = require("eqnav.render.raster").box(40 * g.cell_width, 4 * g.cell_height, g)
+    local file = helpers.make_png(box.width, box.height)
+    if not file then
+      return
+    end
+    assert.are.equal(4, backend.rows({ tex = "x" }, file, 50))
+    assert.is_false(backend.overflows(file, 50))
+    local half = backend.rows({ tex = "x" }, file, 20)
+    assert.is_true(half < 4, "rows ignored the window width: " .. half)
+    assert.is_true(backend.overflows(file, 20))
+    if available then
+      local size = { cell_width = g.cell_width, cell_height = g.cell_height }
+      local _, drawn =
+        require("image/utils/math").adjust_to_aspect_ratio(size, box.width, box.height, 20, 4)
+      assert.are.equal(drawn, half)
+    end
+  end)
+end)
+
+-- image.nvim takes x/y as screen coordinates for an image bound to no window,
+-- so every image was drawn at column 0, over the source, and stayed put when
+-- the index scrolled (#60).
+describe("image.nvim backend placement", function()
+  it("binds the image to the index window, on the rows reserved for it", function()
+    if skip_unless_image() then
+      return
+    end
+    setup()
+    local g = backend.geometry()
+    local box = require("eqnav.render.raster").box(10 * g.cell_width - 2, 2.6 * g.cell_height, g)
+    local file = helpers.make_png(box.width, box.height)
+    if not file then
+      return
+    end
+    local buf = shown(helpers.buf("header\n\n\n\n\n", "markdown"))
+    local win = vim.api.nvim_get_current_win()
+    local img = backend.place(buf, 2, { tex = "x" }, file)
+    assert.is_truthy(img, "image.nvim rejected eqnav's from_file opts")
+    assert.are.equal(win, img.window)
+    assert.are.equal(buf, img.buffer)
+    -- image.nvim draws below its anchor: anchored on the header, the image
+    -- starts on the first reserved row.
+    assert.are.equal(0, img.geometry.y)
+    assert.are.equal(0, img.geometry.x)
+    assert.are.same({ 10, 3 }, { img.geometry.width, img.geometry.height })
+    -- No virtual lines of its own under the blank rows eqnav reserved.
+    assert.is_falsy(img.with_virtual_padding)
+    -- The header and the three rows under it: while any of them is scrolled
+    -- off the top, image.nvim draws what is left of the image.
+    assert.are.equal(4, img.overlap)
+    -- Nor shrunk to image.nvim's max_height_window_percentage and friends.
+    assert.is_true(img.ignore_global_max_size)
+    backend.clear(buf)
+  end)
+
+  it("fits an over-wide image to the window it is placed in", function()
+    if skip_unless_image() then
+      return
+    end
+    setup()
+    local g = backend.geometry()
+    local box = require("eqnav.render.raster").box(400 * g.cell_width, 4 * g.cell_height, g)
+    local file = helpers.make_png(box.width, box.height)
+    if not file then
+      return
+    end
+    local buf = shown(helpers.buf("header\n\n\n\n\n", "markdown"))
+    local width = vim.api.nvim_win_get_width(0)
+    local img = backend.place(buf, 2, { tex = "x" }, file)
+    assert.is_truthy(img)
+    -- Asked for the window's width at the full height; image.nvim takes the
+    -- rows down to keep the aspect, to the number rows() reserved.
+    assert.are.same({ width, 4 }, { img.geometry.width, img.geometry.height })
+    local rows = backend.rows({ tex = "x" }, file, width)
+    assert.is_true(rows < 4)
+    local size = { cell_width = g.cell_width, cell_height = g.cell_height }
+    local _, drawn =
+      require("image/utils/math").adjust_to_aspect_ratio(size, box.width, box.height, width, 4)
+    assert.are.equal(drawn, rows)
+    assert.are.equal(rows + 1, img.overlap)
+    backend.clear(buf)
+  end)
+
+  it("draws nothing for a buffer no window shows", function()
+    if skip_unless_image() then
+      return
+    end
+    setup()
+    local file = helpers.make_png(64, 32)
+    if not file then
+      return
+    end
+    local buf = helpers.buf("header\n\n\n", "markdown")
+    assert.is_nil(backend.place(buf, 2, { tex = "x" }, file))
   end)
 end)

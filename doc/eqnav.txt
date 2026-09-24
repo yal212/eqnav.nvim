@@ -185,10 +185,17 @@ render.ex ~
     CSS pixels per TeX `ex` unit. This is the equation-size knob. Raise it for
     larger equations in the index.
 
-    With the snacks.nvim backend, equations are drawn at the display's pixel
+    With an image backend, equations are drawn at the display's pixel
     density (9 is 22.5 device pixels on a 2.5x display) and padded to whole
     terminal cells, so every equation is shown at the same scale, unstretched.
-    A font-size change therefore re-renders on the next refresh.
+    A font-size change therefore re-renders on the next refresh. image.nvim
+    does not report a density, so eqnav takes it as the cell width over 8 px,
+    as snacks.nvim does when the terminal will not say.
+
+    With image.nvim, eqnav sizes each image in the index itself. image.nvim's
+    `max_width`, `max_height`, `max_width_window_percentage`,
+    `max_height_window_percentage` and `scale_factor` do not apply there, and
+    still apply to images image.nvim draws anywhere else.
 
                                                               *eqnav-color*
 render.color ~
